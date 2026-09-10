@@ -31,12 +31,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $old['amount']       = trim($_POST['amount'] ?? '');
     $old['expense_date'] = trim($_POST['expense_date'] ?? '');
 
-    // ===== VALIDATION =====
-
+    // Category
     if (!array_key_exists($old['category'], $categories)) {
         $errors[] = 'Please choose a valid category.';
     }
 
+    // Description
     if ($old['description'] === '') {
         $errors[] = 'Please add a short description.';
     } elseif (mb_strlen($old['description']) < 3) {
@@ -45,6 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = 'Description cannot be longer than 255 characters.';
     }
 
+    // Amount
     if ($old['amount'] === '' || !is_numeric($old['amount'])) {
         $errors[] = 'Amount must be a valid number.';
     } elseif ((float) $old['amount'] <= 0) {
@@ -53,17 +54,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = 'Amount cannot be more than Rs. 1,000,000.';
     }
 
+    // Expense date
+    // Today and past = allowed
+    // Future = not allowed
     if ($old['expense_date'] === '') {
         $errors[] = 'Expense date is required.';
-    } else {
-        $date = DateTime::createFromFormat('Y-m-d', $old['expense_date']);
-        $today = new DateTime('today');
-
-        if (!$date || $date->format('Y-m-d') !== $old['expense_date']) {
-            $errors[] = 'Please enter a valid date.';
-        } elseif ($date > $today) {
-            $errors[] = 'Expense date cannot be in the future.';
-        }
+    } elseif (!DateTime::createFromFormat('Y-m-d', $old['expense_date'])) {
+        $errors[] = 'Please enter a valid date.';
+    } elseif ($old['expense_date'] > date('Y-m-d')) {
+        $errors[] = 'Expense date cannot be in the future.';
     }
 
     if (!$errors) {
@@ -108,28 +107,31 @@ require_once ROOT_PATH . '/includes/header.php';
                 <select name="category" class="form-select" required>
                     <option value="">-- Select Category --</option>
                     <?php foreach ($categories as $value => $label): ?>
-                        <option value="<?= $value ?>" <?= $old['category'] === $value ? 'selected' : '' ?>><?= htmlspecialchars($label) ?></option>
+                        <option value="<?= $value ?>" <?= $old['category'] === $value ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($label) ?>
+                        </option>
                     <?php endforeach; ?>
                 </select>
             </div>
 
             <div class="mb-3">
                 <label class="form-label">Description *</label>
-                <input type="text" name="description" class="form-control" 
-                       value="<?= htmlspecialchars($old['description']) ?>" 
-                       placeholder="e.g. New dumbbells, August electricity bill" required>
+                <input type="text" name="description" class="form-control"
+                       value="<?= htmlspecialchars($old['description']) ?>"
+                       placeholder="e.g. Electricity bill" required>
             </div>
 
             <div class="row">
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Amount (Rs.) *</label>
-                    <input type="number" step="0.01" min="0.01" name="amount" class="form-control" 
+                    <input type="number" step="0.01" min="0.01" name="amount" class="form-control"
                            value="<?= htmlspecialchars($old['amount']) ?>" required>
                 </div>
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Expense Date *</label>
-                    <input type="date" name="expense_date" class="form-control" 
-                           value="<?= htmlspecialchars($old['expense_date']) ?>" required>
+                    <input type="date" name="expense_date" class="form-control"
+                           value="<?= htmlspecialchars($old['expense_date']) ?>"
+                           max="<?= date('Y-m-d') ?>" required>
                 </div>
             </div>
 

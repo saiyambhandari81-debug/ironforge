@@ -17,7 +17,7 @@ $stmt->execute([$id]);
 $trainer = $stmt->fetch();
 
 if ($trainer) {
-    $newStatus = $trainer['status'] === 'active' ? 'inactive' : 'active';
+    $newStatus = $trainer['status']  === 'active' ? 'inactive' : 'active';
     $update = $pdo->prepare("UPDATE trainers SET status = ? WHERE trainer_id = ?");
     $update->execute([$newStatus, $id]);
     $msg = $newStatus === 'active' ? 'activated' : 'deactivated';
