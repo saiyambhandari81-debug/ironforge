@@ -25,27 +25,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = 'Email and password are required.';
     } else {
         // Try admin first
-        $stmt = $pdo->prepare('SELECT admin_id, full_name, password_hash FROM admins WHERE email = ? LIMIT 1');
+        $stmt = $pdo->prepare(
+            'SELECT admin_id, full_name, role, password_hash, status FROM admins WHERE email = ? LIMIT 1'
+        );
         $stmt->execute([$email]);
         $admin = $stmt->fetch();
 
-        if ($admin && password_verify($password, $admin['password_hash'])) {
-            $_SESSION['admin_id'] = $admin['admin_id'];
+        if (
+            $admin
+            && ($admin['status'] ?? 'active') === 'active'
+            && password_verify($password, $admin['password_hash'])
+        ) {
+            session_regenerate_id(true);
+            $_SESSION['admin_id']   = $admin['admin_id'];
             $_SESSION['admin_name'] = $admin['full_name'];
+            $_SESSION['admin_role'] = $admin['role']; // needed for refund/transfer approve
             header('Location: ' . BASE_URL . '/admin/dashboard.php');
             exit;
         }
 
         // Then member
-        $stmt = $pdo->prepare('SELECT member_id, full_name, password_hash, status FROM members WHERE email = ? LIMIT 1');
+        $stmt = $pdo->prepare(
+            'SELECT member_id, full_name, password_hash, status FROM members WHERE email = ? LIMIT 1'
+        );
         $stmt->execute([$email]);
         $member = $stmt->fetch();
 
-        if ($member && !empty($member['password_hash']) && password_verify($password, $member['password_hash'])) {
+        if (
+            $member
+            && !empty($member['password_hash'])
+            && password_verify($password, $member['password_hash'])
+        ) {
             if (($member['status'] ?? 'active') !== 'active') {
                 $errors[] = 'Your account is not active. Contact the gym.';
             } else {
-                $_SESSION['member_id'] = $member['member_id'];
+                session_regenerate_id(true);
+                $_SESSION['member_id']   = $member['member_id'];
                 $_SESSION['member_name'] = $member['full_name'];
                 header('Location: ' . BASE_URL . '/user/index.php');
                 exit;

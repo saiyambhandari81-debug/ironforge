@@ -84,10 +84,19 @@ require_once ROOT_PATH . '/includes/header.php';
                 <td><?= htmlspecialchars($p['plan_name'] ?? '-') ?></td>
                 <td><?= formatMoney($p['amount']) ?></td>
                 <td><?= formatDate($p['payment_date']) ?></td>
-                <td><?= ucfirst(str_replace('_', ' ', $p['payment_method'])) ?></td>
-                <td><span class="badge bg-<?= $statusColors[$p['payment_status']] ?? 'secondary' ?>"><?= ucfirst($p['payment_status']) ?></span></td>
                 <td>
-                    <a href="<?= BASE_URL ?>/admin/payments/receipt.php?id=<?= $p['payment_id'] ?>" class="btn btn-sm btn-outline-secondary">Receipt</a>
+                    <?= ucfirst(str_replace('_', ' ', $p['payment_method'])) ?>
+                    <?php if (($p['transaction_reference'] ?? '') === 'member_portal'): ?>
+                        <span class="badge bg-info text-dark">Member portal</span>
+                    <?php endif; ?>
+                </td>
+                <td>
+                    <span class="badge bg-<?= $statusColors[$p['payment_status']] ?? 'secondary' ?>">
+                        <?= ucfirst($p['payment_status']) ?>
+                    </span>
+                </td>
+                <td>
+                    <a href="<?= BASE_URL ?>/admin/payments/receipt.php?id=<?= (int) $p['payment_id'] ?>" class="btn btn-sm btn-outline-secondary">Receipt</a>
                 </td>
             </tr>
         <?php endforeach; endif; ?>
