@@ -155,4 +155,3 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 </body>
 </html>
-<a href="<?= BASE_URL ?>/login.php">Log in</a>
