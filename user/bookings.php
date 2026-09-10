@@ -1,15 +1,13 @@
 <?php
 require_once __DIR__ . '/../config/database.php';
 require_once ROOT_PATH . '/includes/auth.php';
-$pageTitle = 'Dashboard'; // change per page
-require ROOT_PATH . '/includes/user_header.php';
 requireMember();
 
 $memberId = (int) $_SESSION['member_id'];
 $errors = [];
 $success = '';
 
-// Does member have active membership?
+// Active membership?
 $ms = $pdo->prepare("
     SELECT membership_id FROM memberships
     WHERE member_id = ? AND status = 'active' AND expiry_date >= CURDATE()
@@ -72,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $pdo->commit();
                 $success = 'Booking requested. Waiting for gym confirmation.';
-                // refresh slot list
+
                 $slots = $pdo->query("
                     SELECT ts.slot_id, ts.slot_date, ts.start_time, ts.end_time, t.full_name AS trainer_name
                     FROM trainer_slots ts
@@ -96,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Member's bookings
+// Member bookings list
 $list = $pdo->prepare("
     SELECT b.booking_status, t.full_name AS trainer_name,
            ts.slot_date, ts.start_time, ts.end_time
@@ -109,103 +107,85 @@ $list = $pdo->prepare("
 ");
 $list->execute([$memberId]);
 $rows = $list->fetchAll();
+
+$pageTitle = 'My Bookings';
+require ROOT_PATH . '/includes/user_header.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>My Bookings - IronForge Gym</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="bg-light">
-<nav class="navbar navbar-dark bg-dark px-3">
-    <a class="navbar-brand" href="<?= BASE_URL ?>/user/index.php">IronForge</a>
-    <div class="d-flex gap-3 flex-wrap">
-        <a class="nav-link text-white" href="<?= BASE_URL ?>/user/index.php">Dashboard</a>
-        <a class="nav-link text-white" href="<?= BASE_URL ?>/user/membership.php">Membership</a>
-        <a class="nav-link text-white" href="<?= BASE_URL ?>/user/payments.php">Payments</a>
-        <a class="nav-link text-white" href="<?= BASE_URL ?>/user/attendance.php">Attendance</a>
-        <a class="nav-link text-white" href="<?= BASE_URL ?>/user/bookings.php">Bookings</a>
-        <a class="nav-link text-white" href="<?= BASE_URL ?>/user/profile.php">Profile</a>
-        <a class="nav-link text-white" href="<?= BASE_URL ?>/logout.php">Log out</a>
+
+<h1 class="h4 mb-3">My Bookings</h1>
+
+<?php if ($success): ?>
+    <div class="alert alert-success"><?= htmlspecialchars($success) ?></div>
+<?php endif; ?>
+
+<?php if ($errors): ?>
+    <div class="alert alert-danger">
+        <?php foreach ($errors as $e): ?>
+            <div><?= htmlspecialchars($e) ?></div>
+        <?php endforeach; ?>
     </div>
-</nav>
+<?php endif; ?>
 
-<div class="container py-4">
-    <h1 class="h4 mb-3">My Bookings</h1>
+<div class="card p-3 mb-4">
+    <h2 class="h6 mb-3">Request a trainer session</h2>
 
-    <?php if ($success): ?>
-        <div class="alert alert-success"><?= htmlspecialchars($success) ?></div>
+    <?php if (!$hasMembership): ?>
+        <p class="text-muted mb-0">You need an active membership first. Contact the front desk.</p>
+    <?php elseif (!$slots): ?>
+        <p class="text-muted mb-0">No available slots right now. Try again later.</p>
+    <?php else: ?>
+        <form method="POST" class="row g-2 align-items-end">
+            <?= csrfField() ?>
+            <div class="col-md-8">
+                <label class="form-label">Available slot</label>
+                <select name="slot_id" class="form-select" required>
+                    <option value="">-- Choose --</option>
+                    <?php foreach ($slots as $s): ?>
+                        <option value="<?= (int)$s['slot_id'] ?>">
+                            <?= htmlspecialchars($s['trainer_name']) ?>
+                            — <?= htmlspecialchars($s['slot_date']) ?>
+                            <?= htmlspecialchars(substr($s['start_time'], 0, 5)) ?>–<?= htmlspecialchars(substr($s['end_time'], 0, 5)) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-dark w-100">Request booking</button>
+            </div>
+        </form>
     <?php endif; ?>
+</div>
 
-    <?php if ($errors): ?>
-        <div class="alert alert-danger">
-            <?php foreach ($errors as $e): ?>
-                <div><?= htmlspecialchars($e) ?></div>
-            <?php endforeach; ?>
-        </div>
-    <?php endif; ?>
-
-    <div class="card p-3 mb-4">
-        <h2 class="h6">Request a trainer session</h2>
-
-        <?php if (!$hasMembership): ?>
-            <p class="text-muted mb-0">You need an active membership first. Contact the front desk.</p>
-        <?php elseif (!$slots): ?>
-            <p class="text-muted mb-0">No available slots right now. Try again later.</p>
-        <?php else: ?>
-            <form method="POST" class="row g-2 align-items-end">
-                <?= csrfField() ?>
-                <div class="col-md-8">
-                    <label class="form-label">Available slot</label>
-                    <select name="slot_id" class="form-select" required>
-                        <option value="">-- Choose --</option>
-                        <?php foreach ($slots as $s): ?>
-                            <option value="<?= (int)$s['slot_id'] ?>">
-                                <?= htmlspecialchars($s['trainer_name']) ?>
-                                — <?= htmlspecialchars($s['slot_date']) ?>
-                                <?= htmlspecialchars(substr($s['start_time'], 0, 5)) ?>–<?= htmlspecialchars(substr($s['end_time'], 0, 5)) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-md-4">
-                    <button type="submit" class="btn btn-dark w-100">Request booking</button>
-                </div>
-            </form>
-        <?php endif; ?>
-    </div>
-
-    <div class="card">
-        <div class="card-header bg-white fw-semibold">Your bookings</div>
-        <div class="table-responsive">
-            <table class="table mb-0">
-                <thead>
-                    <tr>
-                        <th>Trainer</th>
-                        <th>Date</th>
-                        <th>Time</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                <?php if (!$rows): ?>
-                    <tr><td colspan="4" class="text-muted">No bookings yet.</td></tr>
-                <?php else: foreach ($rows as $r): ?>
-                    <tr>
-                        <td><?= htmlspecialchars($r['trainer_name']) ?></td>
-                        <td><?= htmlspecialchars($r['slot_date']) ?></td>
-                        <td>
-                            <?= htmlspecialchars(substr($r['start_time'], 0, 5)) ?>
-                            –
-                            <?= htmlspecialchars(substr($r['end_time'], 0, 5)) ?>
-                        </td>
-                        <td><?= htmlspecialchars(ucfirst($r['booking_status'])) ?></td>
-                    </tr>
-                <?php endforeach; endif; ?>
-                </tbody>
-            </table>
-        </div>
+<div class="card">
+    <div class="card-header bg-white border-0 fw-semibold pt-3">Your bookings</div>
+    <div class="table-responsive">
+        <table class="table mb-0">
+            <thead>
+                <tr>
+                    <th>Trainer</th>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php if (!$rows): ?>
+                <tr><td colspan="4" class="text-muted">No bookings yet.</td></tr>
+            <?php else: foreach ($rows as $r): ?>
+                <tr>
+                    <td><?= htmlspecialchars($r['trainer_name']) ?></td>
+                    <td><?= htmlspecialchars($r['slot_date']) ?></td>
+                    <td>
+                        <?= htmlspecialchars(substr($r['start_time'], 0, 5)) ?>
+                        –
+                        <?= htmlspecialchars(substr($r['end_time'], 0, 5)) ?>
+                    </td>
+                    <td><?= htmlspecialchars(ucfirst($r['booking_status'])) ?></td>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+        </table>
     </div>
 </div>
+
 <?php require ROOT_PATH . '/includes/user_footer.php'; ?>

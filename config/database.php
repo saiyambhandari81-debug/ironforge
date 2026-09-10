@@ -1,21 +1,14 @@
 <?php
-// ============================================================
-// Path helpers
-// ============================================================
+date_default_timezone_set('Asia/Kathmandu');
+
 define('ROOT_PATH', dirname(__DIR__));
 define('BASE_URL', '/gym-management');
 
-// ============================================================
-// Database configuration
-// ============================================================
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'ironforge_gym');
 define('DB_USER', 'root');
-define('DB_PASS', '');   // WAMP default is blank
+define('DB_PASS', '');
 
-// ============================================================
-// Create one shared PDO connection
-// ============================================================
 $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8mb4";
 
 try {
@@ -28,4 +21,5 @@ try {
     error_log('Database connection failed: ' . $e->getMessage());
     die('Something went wrong connecting to the database. Please try again shortly.');
 }
+
 require_once ROOT_PATH . '/includes/functions.php';
