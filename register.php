@@ -99,3 +99,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 </body>
 </html>
+<p class="mt-3"><a href="<?= BASE_URL ?>/login.php">Already have account? Log in</a></p>
+</div>
