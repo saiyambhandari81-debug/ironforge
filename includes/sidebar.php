@@ -1,10 +1,12 @@
-<div id="sidebar" class="d-flex flex-column text-white" style="width: 260px; min-height: 100vh; background: #0f1419;">
-    <div class="px-3 py-4 border-bottom border-secondary">
+<div id="sidebar" class="d-flex flex-column text-white"
+     style="width: 260px; height: 100vh; background: #0f1419; position: sticky; top: 0;">
+
+    <div class="px-3 py-4 border-bottom border-secondary flex-shrink-0">
         <div class="fw-bold fs-5">IronForge</div>
         <div class="text-white-50 small">Gym Admin</div>
     </div>
 
-    <div class="flex-grow-1 p-3">
+    <div class="flex-grow-1 p-3" style="overflow-y: auto;">
         <a href="<?= BASE_URL ?>/admin/dashboard.php" class="d-block text-decoration-none px-3 py-2 rounded mb-1 text-white">Dashboard</a>
 
         <div class="text-uppercase text-white-50 small px-3 mt-3 mb-1">Members</div>
