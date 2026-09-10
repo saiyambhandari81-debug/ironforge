@@ -11,30 +11,58 @@ if (!isset($pageTitle)) {
     <title><?= htmlspecialchars($pageTitle) ?> - IronForge Gym</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background: #f4f5f7; }
-        .card { border: 0; box-shadow: 0 1px 3px rgba(0,0,0,.08); border-radius: 12px; }
+        body { background: #f5f6f8; margin: 0; }
+        .member-nav {
+            background: #fff;
+            border-bottom: 1px solid #e6e8ec;
+            padding: 12px 20px;
+        }
+        .member-nav .brand {
+            font-weight: 700;
+            color: #0f1419;
+            text-decoration: none;
+            margin-right: 20px;
+        }
+        .member-nav a {
+            color: #4b5563;
+            text-decoration: none;
+            margin-right: 14px;
+            font-size: 0.95rem;
+        }
+        .member-nav a:hover { color: #0f1419; }
+        .member-content { padding: 28px 20px; max-width: 1100px; margin: 0 auto; }
+        .card {
+            border: 0;
+            border-radius: 14px;
+            box-shadow: 0 1px 3px rgba(0,0,0,.06);
+            background: #fff;
+        }
+        .plan-card {
+            background: #0f1419;
+            color: #fff;
+            border-radius: 14px;
+            padding: 20px;
+        }
+        .stat-label { color: #6b7280; font-size: .85rem; }
+        .stat-value { font-size: 1.35rem; font-weight: 700; }
     </style>
 </head>
 <body>
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark px-3">
-    <a class="navbar-brand" href="<?= BASE_URL ?>/user/index.php">IronForge</a>
-    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#memberNav">
-        <span class="navbar-toggler-icon"></span>
-    </button>
-    <div class="collapse navbar-collapse" id="memberNav">
-        <ul class="navbar-nav me-auto">
-            <li class="nav-item"><a class="nav-link" href="<?= BASE_URL ?>/user/index.php">Dashboard</a></li>
-            <li class="nav-item"><a class="nav-link" href="<?= BASE_URL ?>/user/membership.php">Membership</a></li>
-            <li class="nav-item"><a class="nav-link" href="<?= BASE_URL ?>/user/payments.php">Payments</a></li>
-            <li class="nav-item"><a class="nav-link" href="<?= BASE_URL ?>/user/attendance.php">Attendance</a></li>
-            <li class="nav-item"><a class="nav-link" href="<?= BASE_URL ?>/user/bookings.php">Bookings</a></li>
-            <li class="nav-item"><a class="nav-link" href="<?= BASE_URL ?>/user/profile.php">Profile</a></li>
-            <li class="nav-item"><a class="nav-link" href="<?= BASE_URL ?>/user/change-password.php">Password</a></li>
-        </ul>
-        <span class="navbar-text text-white-50 me-3 d-none d-lg-inline">
+<nav class="member-nav d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <div class="d-flex flex-wrap align-items-center">
+        <a class="brand" href="<?= BASE_URL ?>/user/index.php">IronForge</a>
+        <a href="<?= BASE_URL ?>/user/index.php">Dashboard</a>
+        <a href="<?= BASE_URL ?>/user/membership.php">Membership</a>
+        <a href="<?= BASE_URL ?>/user/payments.php">Payments</a>
+        <a href="<?= BASE_URL ?>/user/attendance.php">Attendance</a>
+        <a href="<?= BASE_URL ?>/user/bookings.php">Bookings</a>
+        <a href="<?= BASE_URL ?>/user/profile.php">Profile</a>
+    </div>
+    <div class="d-flex align-items-center gap-3">
+        <span class="text-muted small d-none d-md-inline">
             <?= htmlspecialchars($_SESSION['member_name'] ?? '') ?>
         </span>
-        <a class="btn btn-sm btn-outline-light" href="<?= BASE_URL ?>/logout.php">Log out</a>
+        <a href="<?= BASE_URL ?>/logout.php" class="btn btn-sm btn-dark">Log out</a>
     </div>
 </nav>
-<main class="container py-4">
+<main class="member-content">
