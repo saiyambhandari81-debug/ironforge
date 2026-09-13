@@ -1,14 +1,9 @@
 <?php
+require_once ROOT_PATH . '/includes/auth.php';
+requireTrainer();
+
 if (!isset($pageTitle)) {
-    $pageTitle = 'Admin';
-}
-$pendingNotifCount = 0;
-if (isset($pdo)) {
-    try {
-        $pendingNotifCount = (int) $pdo->query("SELECT (SELECT COUNT(*) FROM transfers WHERE status = 'pending') + (SELECT COUNT(*) FROM refunds WHERE status = 'pending') + (SELECT COUNT(*) FROM change_requests WHERE status = 'pending')")->fetchColumn();
-    } catch (Throwable $e) {
-        $pendingNotifCount = 0;
-    }
+    $pageTitle = 'Trainer Portal';
 }
 ?>
 <!DOCTYPE html>
@@ -16,6 +11,7 @@ if (isset($pdo)) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="<?= csrfToken() ?>">
     <title><?= htmlspecialchars($pageTitle) ?> - IronForge Gym</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -27,7 +23,7 @@ if (isset($pdo)) {
 <body>
 <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 <div class="admin-wrap">
-    <?php require_once ROOT_PATH . '/includes/sidebar.php'; ?>
+    <?php require_once ROOT_PATH . '/includes/trainer_sidebar.php'; ?>
     <div class="admin-main">
         <header class="admin-topbar">
             <div class="topbar-title">
@@ -35,26 +31,19 @@ if (isset($pdo)) {
                     <i class="bi bi-list fs-5"></i>
                 </button>
                 <div>
-                    <div class="topbar-breadcrumb">Admin / Operations</div>
+                    <div class="topbar-breadcrumb">Trainer / Portal</div>
                     <h1 class="h6 mb-0 fw-bold"><?= htmlspecialchars($pageTitle) ?></h1>
                 </div>
             </div>
 
             <div class="d-flex align-items-center gap-2">
-                <a href="<?= BASE_URL ?>/admin/transfers/" class="icon-btn position-relative" title="<?= $pendingNotifCount ?> pending requests">
-                    <i class="bi bi-bell"></i>
-                    <?php if ($pendingNotifCount > 0): ?>
-                        <span class="notif-dot"></span>
-                    <?php endif; ?>
-                </a>
-
                 <div class="admin-profile ms-2 ps-2 border-start border-light-subtle">
                     <div class="avatar-chip">
-                        <?= strtoupper(substr($_SESSION['admin_name'] ?? 'A', 0, 1)) ?>
+                        <?= strtoupper(substr($_SESSION['trainer_name'] ?? 'T', 0, 1)) ?>
                     </div>
                     <div class="d-none d-sm-block">
-                        <div class="fw-semibold lh-1" style="font-size: 0.85rem;"><?= htmlspecialchars($_SESSION['admin_name'] ?? 'Admin') ?></div>
-                        <div class="text-muted" style="font-size: 0.72rem;"><?= htmlspecialchars($_SESSION['admin_role'] ?? 'Administrator') ?></div>
+                        <div class="fw-semibold lh-1" style="font-size: 0.85rem;"><?= htmlspecialchars($_SESSION['trainer_name'] ?? 'Trainer') ?></div>
+                        <div class="text-muted" style="font-size: 0.72rem;">Trainer Account</div>
                     </div>
                 </div>
             </div>

@@ -47,6 +47,7 @@ document.addEventListener('DOMContentLoaded', function () {
         startInput.addEventListener('change', updateExpiryPreview);
     }
 });
+
 // Payment form: auto-fill amount with full due balance
 document.addEventListener('DOMContentLoaded', function () {
     const membershipSelect = document.getElementById('membershipSelect');
@@ -59,4 +60,47 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
     }
+});
+
+// Sidebar & Mobile Navigation Handlers
+document.addEventListener('DOMContentLoaded', function () {
+    // Sidebar collapse toggle for desktop
+    const sidebarToggleBtn = document.getElementById('sidebarCollapseToggle');
+    if (sidebarToggleBtn) {
+        // Restore collapse preference
+        if (localStorage.getItem('sidebar_collapsed') === '1') {
+            document.body.classList.add('sidebar-collapsed');
+        }
+        sidebarToggleBtn.addEventListener('click', function () {
+            document.body.classList.toggle('sidebar-collapsed');
+            localStorage.setItem('sidebar_collapsed', document.body.classList.contains('sidebar-collapsed') ? '1' : '0');
+        });
+    }
+
+    // Mobile sidebar drawer open/close
+    const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+    const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+    if (mobileMenuBtn) {
+        mobileMenuBtn.addEventListener('click', function () {
+            document.body.classList.toggle('sidebar-open');
+        });
+    }
+    if (sidebarBackdrop) {
+        sidebarBackdrop.addEventListener('click', function () {
+            document.body.classList.remove('sidebar-open');
+        });
+    }
+
+    // Auto highlight active nav item based on current location
+    const currentPath = window.location.pathname;
+    const navItems = document.querySelectorAll('#sidebar .nav-item, .member-links a');
+    navItems.forEach(function (link) {
+        const href = link.getAttribute('href');
+        if (href) {
+            const linkPath = new URL(href, window.location.origin).pathname;
+            if (currentPath === linkPath || (linkPath !== '/' && linkPath !== '/gym-management/' && currentPath.startsWith(linkPath))) {
+                link.classList.add('active');
+            }
+        }
+    });
 });

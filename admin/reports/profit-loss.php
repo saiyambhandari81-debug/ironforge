@@ -1,12 +1,7 @@
-<?php<?php
+<?php
 require_once __DIR__ . '/../../config/database.php';
 require_once ROOT_PATH . '/includes/auth.php';
-require_once ROOT_PATH . '/includes/functions.php';   // ← This line is required
-requireLogin();
-
-$range = $_GET['range'] ?? 'month';
-require_once __DIR__ . '/../../config/database.php';
-require_once ROOT_PATH . '/includes/auth.php';
+require_once ROOT_PATH . '/includes/functions.php';
 requireLogin();
 
 $range = $_GET['range'] ?? 'month';
@@ -59,88 +54,110 @@ $categoryStmt = $pdo->prepare(
 $categoryStmt->execute([$startDate, $endDate]);
 $expensesByCategory = $categoryStmt->fetchAll();
 
-$pageTitle = 'Profit & Loss';
+$pageTitle = 'Profit & Loss Statement';
 require_once ROOT_PATH . '/includes/header.php';
 ?>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h5 class="mb-0">Profit &amp; Loss</h5>
-</div>
+<div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+    <div>
+        <h1 class="h4 fw-bold mb-1">Profit &amp; Loss Statement</h1>
+        <p class="text-muted small mb-0">Financial statement showing net earnings for: <span class="fw-semibold text-dark"><?= formatDate($startDate) ?></span> – <span class="fw-semibold text-dark"><?= formatDate($endDate) ?></span></p>
+    </div>
 
-<div class="btn-group mb-3" role="group">
-    <a href="?range=today" class="btn btn-<?= $range === 'today' ? 'dark' : 'outline-dark' ?>">Today</a>
-    <a href="?range=week" class="btn btn-<?= $range === 'week' ? 'dark' : 'outline-dark' ?>">This Week</a>
-    <a href="?range=month" class="btn btn-<?= $range === 'month' ? 'dark' : 'outline-dark' ?>">This Month</a>
-    <a href="?range=year" class="btn btn-<?= $range === 'year' ? 'dark' : 'outline-dark' ?>">This Year</a>
-    <a href="?range=custom" class="btn btn-<?= $range === 'custom' ? 'dark' : 'outline-dark' ?>">Custom</a>
+    <!-- Date Range Quick Selector -->
+    <div class="btn-group" role="group" aria-label="Date Range Filter">
+        <a href="?range=today" class="btn btn-sm btn-<?= $range === 'today' ? 'dark' : 'outline-dark' ?>">Today</a>
+        <a href="?range=week" class="btn btn-sm btn-<?= $range === 'week' ? 'dark' : 'outline-dark' ?>">This Week</a>
+        <a href="?range=month" class="btn btn-sm btn-<?= $range === 'month' ? 'dark' : 'outline-dark' ?>">This Month</a>
+        <a href="?range=year" class="btn btn-sm btn-<?= $range === 'year' ? 'dark' : 'outline-dark' ?>">This Year</a>
+        <a href="?range=custom" class="btn btn-sm btn-<?= $range === 'custom' ? 'dark' : 'outline-dark' ?>">Custom</a>
+    </div>
 </div>
 
 <?php if ($range === 'custom'): ?>
-<form method="GET" class="row g-2 mb-3">
-    <input type="hidden" name="range" value="custom">
-    <div class="col-auto">
-        <input type="date" name="start_date" class="form-control" value="<?= htmlspecialchars($startDate) ?>">
-    </div>
-    <div class="col-auto">
-        <input type="date" name="end_date" class="form-control" value="<?= htmlspecialchars($endDate) ?>">
-    </div>
-    <div class="col-auto">
-        <button type="submit" class="btn btn-outline-dark">Apply</button>
-    </div>
-</form>
+<div class="card p-3 mb-4 bg-light border">
+    <form method="GET" class="row g-2 align-items-center">
+        <input type="hidden" name="range" value="custom">
+        <div class="col-auto">
+            <label class="form-label mb-0 small fw-semibold">Start Date:</label>
+            <input type="date" name="start_date" class="form-control form-control-sm" value="<?= htmlspecialchars($startDate) ?>">
+        </div>
+        <div class="col-auto">
+            <label class="form-label mb-0 small fw-semibold">End Date:</label>
+            <input type="date" name="end_date" class="form-control form-control-sm" value="<?= htmlspecialchars($endDate) ?>">
+        </div>
+        <div class="col-auto align-self-end">
+            <button type="submit" class="btn btn-sm btn-dark px-3"><i class="bi bi-filter me-1"></i> Apply Filter</button>
+        </div>
+    </form>
+</div>
 <?php endif; ?>
 
-<p class="text-muted"><?= formatDate($startDate) ?> – <?= formatDate($endDate) ?></p>
-
-<div class="row g-3 mb-3">
+<!-- Financial KPI Cards -->
+<div class="row g-3 mb-4">
     <div class="col-md-4">
-        <div class="card h-100">
-            <div class="card-body text-center">
-                <div class="text-muted">Total Revenue</div>
-                <div class="fs-3 fw-semibold text-success"><?= formatMoney($revenue['total']) ?></div>
+        <div class="fin-card">
+            <div class="d-flex align-items-center justify-content-between mb-1">
+                <span class="fin-label">Total Revenue</span>
+                <i class="bi bi-arrow-up-right-circle text-success fs-5"></i>
             </div>
+            <div class="fin-value tnum text-success"><?= formatMoney($revenue['total']) ?></div>
+            <div class="small text-muted mt-1">Completed member payments</div>
         </div>
     </div>
     <div class="col-md-4">
-        <div class="card h-100">
-            <div class="card-body text-center">
-                <div class="text-muted">Total Expenses</div>
-                <div class="fs-3 fw-semibold text-danger"><?= formatMoney($totalExpenses) ?></div>
+        <div class="fin-card">
+            <div class="d-flex align-items-center justify-content-between mb-1">
+                <span class="fin-label">Total Operating Expenses</span>
+                <i class="bi bi-arrow-down-right-circle text-danger fs-5"></i>
             </div>
+            <div class="fin-value tnum text-danger"><?= formatMoney($totalExpenses) ?></div>
+            <div class="small text-muted mt-1">Operational &amp; maintenance costs</div>
         </div>
     </div>
     <div class="col-md-4">
-        <div class="card h-100 <?= $netProfit >= 0 ? 'border-success' : 'border-danger' ?>">
-            <div class="card-body text-center">
-                <div class="text-muted"><?= $netProfit >= 0 ? 'Net Profit' : 'Net Loss' ?></div>
-                <div class="fs-3 fw-semibold <?= $netProfit >= 0 ? 'text-success' : 'text-danger' ?>">
-                    <?= formatMoney(abs($netProfit)) ?>
-                </div>
+        <div class="fin-card <?= $netProfit >= 0 ? 'is-primary' : 'bg-danger text-white' ?>">
+            <div class="d-flex align-items-center justify-content-between mb-1">
+                <span class="fin-label <?= $netProfit >= 0 ? 'text-white-50' : 'text-white-50' ?>"><?= $netProfit >= 0 ? 'Net Profit' : 'Net Loss' ?></span>
+                <i class="bi bi-piggy-bank text-warning fs-5"></i>
             </div>
+            <div class="fin-value tnum text-white">
+                <?= formatMoney(abs($netProfit)) ?>
+            </div>
+            <div class="small text-white-50 mt-1"><?= $netProfit >= 0 ? 'Surplus income' : 'Deficit for period' ?></div>
         </div>
     </div>
 </div>
 
+<!-- Expense Category Breakdown Table -->
 <div class="card">
-    <div class="card-header bg-white fw-semibold">Expenses by Category</div>
-    <table class="table mb-0">
-        <thead>
-            <tr>
-                <th>Category</th>
-                <th>Amount</th>
-            </tr>
-        </thead>
-        <tbody>
-        <?php if (!$expensesByCategory): ?>
-            <tr><td colspan="2" class="text-muted text-center py-3">No expenses in this range.</td></tr>
-        <?php else: foreach ($expensesByCategory as $c): ?>
-            <tr>
-                <td><?= htmlspecialchars($categoryLabels[$c['category']] ?? $c['category']) ?></td>
-                <td><?= formatMoney($c['total']) ?></td>
-            </tr>
-        <?php endforeach; endif; ?>
-        </tbody>
-    </table>
+    <div class="card-header bg-white d-flex align-items-center justify-content-between pt-3 pb-3">
+        <div class="fw-bold"><i class="bi bi-pie-chart-fill me-2 text-primary"></i>Expenses Breakdown by Category</div>
+        <a href="<?= BASE_URL ?>/admin/expenses/add.php" class="btn btn-sm btn-outline-dark"><i class="bi bi-plus-lg me-1"></i> Add Expense</a>
+    </div>
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Category</th>
+                    <th class="text-end">Total Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php if (!$expensesByCategory): ?>
+                <tr><td colspan="2" class="text-muted text-center py-4">No expense logs found for this date range.</td></tr>
+            <?php else: foreach ($expensesByCategory as $c): ?>
+                <tr>
+                    <td class="fw-medium text-dark">
+                        <i class="bi bi-tag-fill me-2 text-secondary"></i>
+                        <?= htmlspecialchars($categoryLabels[$c['category']] ?? $c['category']) ?>
+                    </td>
+                    <td class="text-end num font-monospace fw-bold text-dark"><?= formatMoney($c['total']) ?></td>
+                </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+        </table>
+    </div>
 </div>
 
 <?php require_once ROOT_PATH . '/includes/footer.php'; ?>

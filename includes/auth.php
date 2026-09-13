@@ -63,3 +63,16 @@ function requireMember(): void
         exit;
     }
 }
+
+function isTrainerLoggedIn(): bool
+{
+    return isset($_SESSION['trainer_id']);
+}
+
+function requireTrainer(): void
+{
+    if (!isTrainerLoggedIn()) {
+        header('Location: ' . BASE_URL . '/login.php');
+        exit;
+    }
+}

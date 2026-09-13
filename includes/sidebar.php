@@ -1,40 +1,97 @@
-<div id="sidebar" class="d-flex flex-column text-white"
-     style="width: 260px; height: 100vh; background: #0f1419; position: sticky; top: 0;">
-
-    <div class="px-3 py-4 border-bottom border-secondary flex-shrink-0">
-        <div class="fw-bold fs-5">IronForge</div>
-        <div class="text-white-50 small">Gym Admin</div>
-    </div>
-
-    <div class="flex-grow-1 p-3" style="overflow-y: auto;">
-        <a href="<?= BASE_URL ?>/admin/dashboard.php" class="d-block text-decoration-none px-3 py-2 rounded mb-1 text-white">Dashboard</a>
-
-        <div class="text-uppercase text-white-50 small px-3 mt-3 mb-1">Members</div>
-        <a href="<?= BASE_URL ?>/admin/members/" class="d-block text-decoration-none px-3 py-2 rounded text-white-50">Members</a>
-        <a href="<?= BASE_URL ?>/admin/memberships/" class="d-block text-decoration-none px-3 py-2 rounded text-white-50">Memberships</a>
-        <a href="<?= BASE_URL ?>/admin/plans/" class="d-block text-decoration-none px-3 py-2 rounded text-white-50">Plans</a>
-
-        <div class="text-uppercase text-white-50 small px-3 mt-3 mb-1">Training</div>
-        <a href="<?= BASE_URL ?>/admin/trainers/" class="d-block text-decoration-none px-3 py-2 rounded text-white-50">Trainers</a>
-        <a href="<?= BASE_URL ?>/admin/trainer-slots/" class="d-block text-decoration-none px-3 py-2 rounded text-white-50">Trainer Slots</a>
-        <a href="<?= BASE_URL ?>/admin/bookings/" class="d-block text-decoration-none px-3 py-2 rounded text-white-50">Bookings</a>
-
-        <div class="text-uppercase text-white-50 small px-3 mt-3 mb-1">Attendance</div>
-        <a href="<?= BASE_URL ?>/admin/attendance/" class="d-block text-decoration-none px-3 py-2 rounded text-white-50">Attendance</a>
-
-        <div class="text-uppercase text-white-50 small px-3 mt-3 mb-1">Finance</div>
-        <a href="<?= BASE_URL ?>/admin/payments/" class="d-block text-decoration-none px-3 py-2 rounded text-white-50">Payments</a>
-        <a href="<?= BASE_URL ?>/admin/expenses/" class="d-block text-decoration-none px-3 py-2 rounded text-white-50">Expenses</a>
-        <a href="<?= BASE_URL ?>/admin/refunds/" class="d-block text-decoration-none px-3 py-2 rounded text-white-50">Refunds</a>
-        <a href="<?= BASE_URL ?>/admin/reports/profit-loss.php" class="d-block text-decoration-none px-3 py-2 rounded text-white-50">Profit &amp; Loss</a>
-
-        <div class="text-uppercase text-white-50 small px-3 mt-3 mb-1">Requests</div>
-        <a href="<?= BASE_URL ?>/admin/transfers/" class="d-block text-decoration-none px-3 py-2 rounded text-white-50">Transfers</a>
-        <a href="<?= BASE_URL ?>/admin/change-requests/" class="d-block text-decoration-none px-3 py-2 rounded text-white-50">Change Requests</a>
-
-        <div class="border-top border-secondary mt-3 pt-3">
-            <a href="<?= BASE_URL ?>/admin/reports/" class="d-block text-decoration-none px-3 py-2 rounded text-white-50">Reports</a>
-            <a href="<?= BASE_URL ?>/logout.php" class="d-block text-decoration-none px-3 py-2 rounded text-white-50">Log out</a>
+<aside id="sidebar">
+    <div class="sidebar-brand">
+        <div class="mark">IF</div>
+        <div>
+            <div class="name">IronForge</div>
+            <div class="tag">Gym Management</div>
         </div>
     </div>
-</div>
+
+    <div class="sidebar-scroll">
+        <div class="sidebar-label"><span>General</span></div>
+        <a href="<?= BASE_URL ?>/admin/dashboard.php" class="nav-item">
+            <i class="bi bi-grid-1x2-fill"></i>
+            <span>Dashboard</span>
+        </a>
+
+        <div class="sidebar-label"><span>Members &amp; Plans</span></div>
+        <a href="<?= BASE_URL ?>/admin/members/" class="nav-item">
+            <i class="bi bi-people-fill"></i>
+            <span>Members</span>
+        </a>
+        <a href="<?= BASE_URL ?>/admin/memberships/" class="nav-item">
+            <i class="bi bi-card-checklist"></i>
+            <span>Memberships</span>
+        </a>
+        <a href="<?= BASE_URL ?>/admin/plans/" class="nav-item">
+            <i class="bi bi-box-seam-fill"></i>
+            <span>Plans</span>
+        </a>
+
+        <div class="sidebar-label"><span>Training</span></div>
+        <a href="<?= BASE_URL ?>/admin/trainers/" class="nav-item">
+            <i class="bi bi-person-badge-fill"></i>
+            <span>Trainers</span>
+        </a>
+        <a href="<?= BASE_URL ?>/admin/trainer-slots/" class="nav-item">
+            <i class="bi bi-calendar3"></i>
+            <span>Trainer Slots</span>
+        </a>
+        <a href="<?= BASE_URL ?>/admin/trainer-leave.php" class="nav-item">
+            <i class="bi bi-calendar2-x"></i>
+            <span>Trainer Leave</span>
+        </a>
+        <a href="<?= BASE_URL ?>/admin/bookings/" class="nav-item">
+            <i class="bi bi-journal-bookmark-fill"></i>
+            <span>Bookings</span>
+        </a>
+
+        <div class="sidebar-label"><span>Operations</span></div>
+        <a href="<?= BASE_URL ?>/admin/attendance/" class="nav-item">
+            <i class="bi bi-clock-history"></i>
+            <span>Attendance</span>
+        </a>
+
+        <div class="sidebar-label"><span>Finance &amp; Reports</span></div>
+        <a href="<?= BASE_URL ?>/admin/payments/" class="nav-item">
+            <i class="bi bi-credit-card-2-front-fill"></i>
+            <span>Payments</span>
+        </a>
+        <a href="<?= BASE_URL ?>/admin/expenses/" class="nav-item">
+            <i class="bi bi-receipt-cutoff"></i>
+            <span>Expenses</span>
+        </a>
+        <a href="<?= BASE_URL ?>/admin/refunds/" class="nav-item">
+            <i class="bi bi-arrow-counterclockwise"></i>
+            <span>Refunds</span>
+        </a>
+        <a href="<?= BASE_URL ?>/admin/reports/profit-loss.php" class="nav-item">
+            <i class="bi bi-graph-up-arrow"></i>
+            <span>Profit &amp; Loss</span>
+        </a>
+        <a href="<?= BASE_URL ?>/admin/reports/" class="nav-item">
+            <i class="bi bi-pie-chart-fill"></i>
+            <span>All Reports</span>
+        </a>
+
+        <div class="sidebar-label"><span>Requests Queue</span></div>
+        <a href="<?= BASE_URL ?>/admin/transfers/" class="nav-item">
+            <i class="bi bi-arrow-left-right"></i>
+            <span>Transfers</span>
+        </a>
+        <a href="<?= BASE_URL ?>/admin/change-requests/" class="nav-item">
+            <i class="bi bi-pencil-square"></i>
+            <span>Change Requests</span>
+        </a>
+    </div>
+
+    <div class="sidebar-foot">
+        <a href="<?= BASE_URL ?>/logout.php" class="nav-item text-danger mb-2">
+            <i class="bi bi-box-arrow-right"></i>
+            <span>Log out</span>
+        </a>
+        <button type="button" class="sidebar-collapse-btn" id="sidebarCollapseToggle" title="Toggle Sidebar">
+            <i class="bi bi-chevron-left"></i>
+        </button>
+    </div>
+</aside>

@@ -70,132 +70,173 @@ $availableSlots    = $pdo->query("SELECT COUNT(*) FROM trainer_slots WHERE statu
 $monthRevenue  = calculateRevenue($pdo, $startOfMonth, date('Y-m-d'));
 $monthExpenses = calculateExpenses($pdo, $startOfMonth, date('Y-m-d'));
 
-$pageTitle = 'Reports';
+$pageTitle = 'Reports Overview';
 require_once ROOT_PATH . '/includes/header.php';
 ?>
 
-<h5 class="mb-3">Reports</h5>
+<div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+    <div>
+        <h1 class="h4 fw-bold mb-1">Reports &amp; Analytics</h1>
+        <p class="text-muted small mb-0">Overview of operational metrics, member statistics, and financial performance</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="<?= BASE_URL ?>/admin/reports/revenue.php" class="btn btn-sm btn-outline-dark"><i class="bi bi-graph-up me-1"></i> Revenue Report</a>
+        <a href="<?= BASE_URL ?>/admin/reports/profit-loss.php" class="btn btn-sm btn-accent"><i class="bi bi-pie-chart me-1"></i> Profit &amp; Loss</a>
+    </div>
+</div>
 
-<div class="row g-3 mb-3">
+<div class="row g-3 mb-4">
+    <!-- Member Reports -->
     <div class="col-lg-6">
         <div class="card h-100">
-            <div class="card-header bg-white fw-semibold">Member Reports</div>
+            <div class="card-header bg-white d-flex align-items-center justify-content-between pt-3 pb-3">
+                <div class="fw-bold"><i class="bi bi-people me-2 text-primary"></i>Member Statistics</div>
+                <a href="<?= BASE_URL ?>/admin/members/" class="btn btn-sm btn-link text-decoration-none p-0">View members &rarr;</a>
+            </div>
             <div class="card-body">
-                <div class="row text-center mb-3">
-                    <div class="col"><div class="text-muted small">Total</div><div class="fs-4 fw-semibold"><?= (int)$totalMembers ?></div></div>
-                    <div class="col"><div class="text-muted small">Active</div><div class="fs-4 fw-semibold"><?= (int)$activeMembers ?></div></div>
-                    <div class="col"><div class="text-muted small">New This Month</div><div class="fs-4 fw-semibold"><?= (int)$newMembers ?></div></div>
-                    <div class="col"><div class="text-muted small">Lapsed</div><div class="fs-4 fw-semibold"><?= (int)$lapsedMembers ?></div></div>
+                <div class="row g-2 text-center mb-3">
+                    <div class="col-3">
+                        <div class="p-2 bg-light rounded">
+                            <div class="text-muted small">Total</div>
+                            <div class="fs-4 fw-bold tnum text-dark"><?= (int)$totalMembers ?></div>
+                        </div>
+                    </div>
+                    <div class="col-3">
+                        <div class="p-2 bg-light rounded">
+                            <div class="text-muted small">Active</div>
+                            <div class="fs-4 fw-bold tnum text-success"><?= (int)$activeMembers ?></div>
+                        </div>
+                    </div>
+                    <div class="col-3">
+                        <div class="p-2 bg-light rounded">
+                            <div class="text-muted small">New (Mo)</div>
+                            <div class="fs-4 fw-bold tnum text-primary"><?= (int)$newMembers ?></div>
+                        </div>
+                    </div>
+                    <div class="col-3">
+                        <div class="p-2 bg-light rounded">
+                            <div class="text-muted small">Lapsed</div>
+                            <div class="fs-4 fw-bold tnum text-danger"><?= (int)$lapsedMembers ?></div>
+                        </div>
+                    </div>
                 </div>
-                <a href="<?= BASE_URL ?>/admin/members/" class="small">View all members &raquo;</a>
             </div>
         </div>
     </div>
 
+    <!-- Membership Reports -->
     <div class="col-lg-6">
         <div class="card h-100">
-            <div class="card-header bg-white fw-semibold">Membership Reports</div>
+            <div class="card-header bg-white d-flex align-items-center justify-content-between pt-3 pb-3">
+                <div class="fw-bold"><i class="bi bi-card-checklist me-2 text-success"></i>Membership Tier Insights</div>
+                <a href="<?= BASE_URL ?>/admin/memberships/" class="btn btn-sm btn-link text-decoration-none p-0">Manage subscriptions &rarr;</a>
+            </div>
             <div class="card-body">
-                <div class="row text-center mb-3">
-                    <div class="col"><div class="text-muted small">Active</div><div class="fs-4 fw-semibold"><?= (int)$activeMemberships ?></div></div>
-                    <div class="col"><div class="text-muted small">Expired</div><div class="fs-4 fw-semibold"><?= (int)$expiredMemberships ?></div></div>
-                    <div class="col"><div class="text-muted small">Expiring in 7 Days</div><div class="fs-4 fw-semibold"><?= (int)$upcomingExpirations ?></div></div>
+                <div class="row g-2 text-center mb-3">
+                    <div class="col-4">
+                        <div class="p-2 bg-light rounded">
+                            <div class="text-muted small">Active</div>
+                            <div class="fs-4 fw-bold tnum text-success"><?= (int)$activeMemberships ?></div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="p-2 bg-light rounded">
+                            <div class="text-muted small">Expired</div>
+                            <div class="fs-4 fw-bold tnum text-danger"><?= (int)$expiredMemberships ?></div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="p-2 bg-light rounded">
+                            <div class="text-muted small">Expiring (7d)</div>
+                            <div class="fs-4 fw-bold tnum text-warning"><?= (int)$upcomingExpirations ?></div>
+                        </div>
+                    </div>
                 </div>
-                <div class="text-muted small mb-1">Most Popular Plans</div>
-                <table class="table table-sm mb-2">
-                    <tbody>
-                    <?php if (!$popularPlans): ?>
-                        <tr><td class="text-muted">No plans yet.</td></tr>
-                    <?php else: foreach ($popularPlans as $p): ?>
-                        <tr>
-                            <td><?= htmlspecialchars($p['plan_name']) ?></td>
-                            <td class="text-end"><?= (int)$p['purchase_count'] ?> purchased</td>
-                        </tr>
-                    <?php endforeach; endif; ?>
-                    </tbody>
-                </table>
-                <a href="<?= BASE_URL ?>/admin/memberships/" class="small">View all memberships &raquo;</a>
+                <div class="small fw-semibold text-muted mb-2">Most Popular Plans:</div>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <tbody>
+                        <?php if (!$popularPlans): ?>
+                            <tr><td class="text-muted text-center py-2">No plan purchases recorded yet.</td></tr>
+                        <?php else: foreach ($popularPlans as $p): ?>
+                            <tr>
+                                <td class="fw-medium text-dark"><?= htmlspecialchars($p['plan_name']) ?></td>
+                                <td class="text-end tnum font-monospace fw-bold"><?= (int)$p['purchase_count'] ?> sales</td>
+                            </tr>
+                        <?php endforeach; endif; ?>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
-<div class="row g-3 mb-3">
+<div class="row g-3 mb-4">
+    <!-- Outstanding Payments -->
     <div class="col-lg-6">
         <div class="card h-100">
-            <div class="card-header bg-white fw-semibold">Payment Reports</div>
-            <div class="card-body">
-                <div class="text-muted small mb-1">Outstanding Payments (top 10)</div>
-                <table class="table table-sm mb-2">
-                    <thead><tr><th>Member</th><th>Plan</th><th class="text-end">Due</th></tr></thead>
+            <div class="card-header bg-white d-flex align-items-center justify-content-between pt-3 pb-3">
+                <div class="fw-bold"><i class="bi bi-exclamation-square me-2 text-danger"></i>Outstanding Balances (Top 10)</div>
+                <a href="<?= BASE_URL ?>/admin/payments/" class="btn btn-sm btn-link text-decoration-none p-0">View all payments &rarr;</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead><tr><th>Member</th><th>Plan</th><th class="text-end">Due Balance</th></tr></thead>
                     <tbody>
                     <?php if (!$outstanding): ?>
-                        <tr><td colspan="3" class="text-muted">Nothing outstanding.</td></tr>
+                        <tr><td colspan="3" class="text-muted text-center py-3">All member balances paid in full.</td></tr>
                     <?php else: foreach ($outstanding as $o): ?>
                         <tr>
-                            <td><?= htmlspecialchars($o['full_name']) ?></td>
-                            <td><?= htmlspecialchars($o['plan_name']) ?></td>
-                            <td class="text-end"><?= formatMoney($o['total_price'] - $o['paid']) ?></td>
+                            <td class="fw-medium text-dark"><?= htmlspecialchars($o['full_name']) ?></td>
+                            <td class="small text-muted"><?= htmlspecialchars($o['plan_name']) ?></td>
+                            <td class="text-end tnum font-monospace fw-bold text-danger"><?= formatMoney($o['total_price'] - $o['paid']) ?></td>
                         </tr>
                     <?php endforeach; endif; ?>
                     </tbody>
                 </table>
-                <a href="<?= BASE_URL ?>/admin/payments/" class="small">View payment history &raquo;</a> ·
-                <a href="<?= BASE_URL ?>/admin/reports/revenue.php" class="small">Revenue &raquo;</a>
             </div>
         </div>
     </div>
 
+    <!-- Attendance & Financial Summary -->
     <div class="col-lg-6">
-        <div class="card h-100">
-            <div class="card-header bg-white fw-semibold">Attendance Reports</div>
+        <div class="card h-100 mb-3">
+            <div class="card-header bg-white d-flex align-items-center justify-content-between pt-3 pb-3">
+                <div class="fw-bold"><i class="bi bi-clock-history me-2 text-info"></i>Attendance Activity</div>
+                <a href="<?= BASE_URL ?>/admin/attendance/history.php" class="btn btn-sm btn-link text-decoration-none p-0">History &rarr;</a>
+            </div>
             <div class="card-body">
-                <div class="row text-center mb-3">
-                    <div class="col">
-                        <div class="text-muted small">Today</div>
-                        <div class="fs-4 fw-semibold"><?= (int)$todayAttendance ?></div>
+                <div class="d-flex align-items-center justify-content-between bg-light p-3 rounded">
+                    <div>
+                        <div class="text-muted small">Today's Check-ins</div>
+                        <div class="fs-3 fw-bold tnum text-dark"><?= (int)$todayAttendance ?></div>
                     </div>
+                    <i class="bi bi-person-bounding-box fs-1 text-secondary opacity-50"></i>
                 </div>
-                <p class="text-muted small mb-2">Daily, monthly, and per-member attendance are in one filterable view.</p>
-                <a href="<?= BASE_URL ?>/admin/attendance/history.php" class="small">View attendance history &raquo;</a>
             </div>
         </div>
-    </div>
-</div>
 
-<div class="row g-3">
-    <div class="col-lg-6">
         <div class="card h-100">
-            <div class="card-header bg-white fw-semibold">Trainer Reports</div>
-            <div class="card-body">
-                <div class="row text-center mb-3">
-                    <div class="col"><div class="text-muted small">Total Bookings</div><div class="fs-4 fw-semibold"><?= (int)$totalBookings ?></div></div>
-                    <div class="col"><div class="text-muted small">Completed</div><div class="fs-4 fw-semibold"><?= (int)$completedSessions ?></div></div>
-                    <div class="col"><div class="text-muted small">Open Slots</div><div class="fs-4 fw-semibold"><?= (int)$availableSlots ?></div></div>
-                </div>
-                <a href="<?= BASE_URL ?>/admin/bookings/" class="small">View bookings &raquo;</a> ·
-                <a href="<?= BASE_URL ?>/admin/trainer-slots/" class="small">View trainer slots &raquo;</a>
+            <div class="card-header bg-white d-flex align-items-center justify-content-between pt-3 pb-3">
+                <div class="fw-bold"><i class="bi bi-bank me-2 text-success"></i>Financial Month-to-Date</div>
+                <a href="<?= BASE_URL ?>/admin/reports/profit-loss.php" class="btn btn-sm btn-link text-decoration-none p-0">P&amp;L Breakdown &rarr;</a>
             </div>
-        </div>
-    </div>
-
-    <div class="col-lg-6">
-        <div class="card h-100">
-            <div class="card-header bg-white fw-semibold">Financial Reports</div>
             <div class="card-body">
-                <div class="row text-center mb-3">
-                    <div class="col">
-                        <div class="text-muted small">Revenue (This Month)</div>
-                        <div class="fs-5 fw-semibold text-success"><?= formatMoney($monthRevenue['total']) ?></div>
+                <div class="row text-center g-2">
+                    <div class="col-6">
+                        <div class="p-3 bg-light rounded">
+                            <div class="text-muted small">Month Revenue</div>
+                            <div class="fs-4 fw-bold tnum text-success"><?= formatMoney($monthRevenue['total']) ?></div>
+                        </div>
                     </div>
-                    <div class="col">
-                        <div class="text-muted small">Expenses (This Month)</div>
-                        <div class="fs-5 fw-semibold text-danger"><?= formatMoney($monthExpenses) ?></div>
+                    <div class="col-6">
+                        <div class="p-3 bg-light rounded">
+                            <div class="text-muted small">Month Expenses</div>
+                            <div class="fs-4 fw-bold tnum text-danger"><?= formatMoney($monthExpenses) ?></div>
+                        </div>
                     </div>
                 </div>
-                <a href="<?= BASE_URL ?>/admin/reports/revenue.php" class="small">Revenue &raquo;</a> ·
-                <a href="<?= BASE_URL ?>/admin/expenses/" class="small">Expenses &raquo;</a> ·
-                <a href="<?= BASE_URL ?>/admin/reports/profit-loss.php" class="small">Profit &amp; Loss &raquo;</a>
             </div>
         </div>
     </div>
