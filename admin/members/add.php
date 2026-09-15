@@ -148,7 +148,7 @@ require_once ROOT_PATH . '/includes/header.php';
             </div>
         <?php endif; ?>
 
-        <form method="POST">
+        <form method="POST" autocomplete="off">
             <?= csrfField() ?>
 
             <div class="mb-3">
@@ -200,16 +200,18 @@ require_once ROOT_PATH . '/includes/header.php';
             </div>
 
             <hr>
-            <p class="text-muted small">This password is for the <strong>member portal</strong> login.</p>
+            <p class="text-muted small mb-2">
+                This password is for the <strong>member portal</strong> login (required).
+            </p>
 
             <div class="row">
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Password *</label>
-                    <input type="password" name="password" class="form-control" required>
+                    <input type="password" name="password" class="form-control" required minlength="6">
                 </div>
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Confirm password *</label>
-                    <input type="password" name="confirm_password" class="form-control" required>
+                    <input type="password" name="confirm_password" class="form-control" required minlength="6">
                 </div>
             </div>
 
