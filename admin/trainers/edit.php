@@ -33,6 +33,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $old['specialization']   = trim($_POST['specialization'] ?? '');
     $old['experience_years'] = trim($_POST['experience_years'] ?? '');
     $old['salary']           = trim($_POST['salary'] ?? '');
+    $password                = (string) ($_POST['password'] ?? '');
+    $confirm                 = (string) ($_POST['confirm_password'] ?? '');
 
     // ===== VALIDATION (same as add) =====
 
@@ -82,19 +84,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = 'Salary cannot be more than Rs. 500,000.';
     }
 
+    // Optional password update
+    if ($password !== '') {
+        if (strlen($password) < 6) {
+            $errors[] = 'New password must be at least 6 characters.';
+        }
+        if ($password !== $confirm) {
+            $errors[] = 'New password and confirm password do not match.';
+        }
+    }
+
     if (!$errors) {
-        $update = $pdo->prepare(
-            "UPDATE trainers SET full_name = ?, email = ?, phone = ?, specialization = ?, experience_years = ?, salary = ? WHERE trainer_id = ?"
-        );
-        $update->execute([
-            $old['full_name'],
-            $old['email'],
-            $old['phone'],
-            $old['specialization'] !== '' ? $old['specialization'] : null,
-            $old['experience_years'],
-            $old['salary'],
-            $id,
-        ]);
+        if ($password !== '') {
+            $hash = password_hash($password, PASSWORD_DEFAULT);
+            $update = $pdo->prepare(
+                "UPDATE trainers SET full_name = ?, email = ?, phone = ?, specialization = ?, experience_years = ?, salary = ?, password_hash = ? WHERE trainer_id = ?"
+            );
+            $update->execute([
+                $old['full_name'],
+                $old['email'],
+                $old['phone'],
+                $old['specialization'] !== '' ? $old['specialization'] : null,
+                $old['experience_years'],
+                $old['salary'],
+                $hash,
+                $id,
+            ]);
+        } else {
+            $update = $pdo->prepare(
+                "UPDATE trainers SET full_name = ?, email = ?, phone = ?, specialization = ?, experience_years = ?, salary = ? WHERE trainer_id = ?"
+            );
+            $update->execute([
+                $old['full_name'],
+                $old['email'],
+                $old['phone'],
+                $old['specialization'] !== '' ? $old['specialization'] : null,
+                $old['experience_years'],
+                $old['salary'],
+                $id,
+            ]);
+        }
 
         header('Location: ' . BASE_URL . '/admin/trainers/?msg=updated');
         exit;
@@ -150,6 +179,21 @@ require_once ROOT_PATH . '/includes/header.php';
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Salary (Rs./month) *</label>
                     <input type="number" step="0.01" min="0" name="salary" class="form-control" value="<?= htmlspecialchars($old['salary']) ?>" required>
+                </div>
+            </div>
+
+            <hr class="my-4">
+            <h6 class="fw-bold mb-1">Update Portal Password</h6>
+            <p class="text-muted small mb-3">Leave blank to keep the current password. Only fill if you want to reset this trainer's login password.</p>
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">New Password</label>
+                    <input type="password" name="password" class="form-control" minlength="6" placeholder="Leave blank to keep existing">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Confirm New Password</label>
+                    <input type="password" name="confirm_password" class="form-control" minlength="6" placeholder="Re-enter new password">
                 </div>
             </div>
 

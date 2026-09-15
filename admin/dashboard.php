@@ -3,21 +3,26 @@ require_once __DIR__ . '/../config/database.php';
 require_once ROOT_PATH . '/includes/auth.php';
 requireLogin();
 
-// ---- Counts ----
-$totalMembers       = $pdo->query("SELECT COUNT(*) FROM members")->fetchColumn();
-$activeMembers      = $pdo->query("SELECT COUNT(*) FROM members WHERE status = 'active'")->fetchColumn();
-$expiredMemberships = $pdo->query("SELECT COUNT(*) FROM memberships WHERE expiry_date < CURDATE()")->fetchColumn();
-$totalTrainers      = $pdo->query("SELECT COUNT(*) FROM trainers")->fetchColumn();
-$todayAttendance    = $pdo->query("SELECT COUNT(*) FROM attendance WHERE attendance_date = CURDATE()")->fetchColumn();
+// Auto-reactivate trainers whose approved leave has ended
+autoReactivateTrainers($pdo);
 
-$pendingTransfers = $pdo->query("SELECT COUNT(*) FROM transfers WHERE status = 'pending'")->fetchColumn();
-$pendingRefunds   = $pdo->query("SELECT COUNT(*) FROM refunds WHERE status = 'pending'")->fetchColumn();
-$pendingChanges   = $pdo->query("SELECT COUNT(*) FROM change_requests WHERE status = 'pending'")->fetchColumn();
-$pendingRequests  = $pendingTransfers + $pendingRefunds + $pendingChanges;
+// ---- Counts ----
+$totalMembers       = (int) $pdo->query("SELECT COUNT(*) FROM members")->fetchColumn();
+$activeMembers      = (int) $pdo->query("SELECT COUNT(*) FROM members WHERE status = 'active'")->fetchColumn();
+$expiredMemberships = (int) $pdo->query("SELECT COUNT(*) FROM memberships WHERE expiry_date < CURDATE()")->fetchColumn();
+$totalTrainers      = (int) $pdo->query("SELECT COUNT(*) FROM trainers")->fetchColumn();
+$todayAttendance    = (int) $pdo->query("SELECT COUNT(*) FROM attendance WHERE attendance_date = CURDATE()")->fetchColumn();
+
+// Pending breakdown counts
+$pendingTrainerLeave = (int) $pdo->query("SELECT COUNT(*) FROM trainer_leave_requests WHERE status = 'pending'")->fetchColumn();
+$pendingRefunds      = (int) $pdo->query("SELECT COUNT(*) FROM refunds WHERE status = 'pending'")->fetchColumn();
+$pendingTransfers    = (int) $pdo->query("SELECT COUNT(*) FROM transfers WHERE status = 'pending'")->fetchColumn();
+$pendingChanges      = (int) $pdo->query("SELECT COUNT(*) FROM change_requests WHERE status = 'pending'")->fetchColumn();
+$pendingRequests     = $pendingTrainerLeave + $pendingRefunds + $pendingTransfers + $pendingChanges;
 
 // ---- Finance ----
-$totalRevenue  = $pdo->query("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE payment_status = 'completed'")->fetchColumn();
-$totalExpenses = $pdo->query("SELECT COALESCE(SUM(amount), 0) FROM expenses")->fetchColumn();
+$totalRevenue  = (float) $pdo->query("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE payment_status = 'completed'")->fetchColumn();
+$totalExpenses = (float) $pdo->query("SELECT COALESCE(SUM(amount), 0) FROM expenses")->fetchColumn();
 $netProfit     = $totalRevenue - $totalExpenses;
 
 // ---- Recent ----
@@ -36,13 +41,16 @@ $recentMembers = $pdo->query("
     LIMIT 5
 ")->fetchAll();
 
+// Upcoming Expirations (Next 7 days)
 $upcomingExpirations = $pdo->query("
-    SELECT ms.expiry_date, m.full_name
+    SELECT ms.membership_id, ms.expiry_date, m.member_id, m.full_name, m.phone, p.plan_name
     FROM memberships ms
     JOIN members m ON ms.member_id = m.member_id
-    WHERE ms.expiry_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+    JOIN plans p ON ms.plan_id = p.plan_id
+    WHERE ms.status = 'active'
+      AND ms.expiry_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
     ORDER BY ms.expiry_date ASC
-    LIMIT 5
+    LIMIT 10
 ")->fetchAll();
 
 $pageTitle = 'Dashboard';
@@ -108,7 +116,88 @@ require_once ROOT_PATH . '/includes/header.php';
                 <div class="kpi-icon tone-warning"><i class="bi bi-inbox"></i></div>
             </div>
             <div class="kpi-value tnum text-warning"><?= number_format((int)$pendingRequests) ?></div>
-            <div class="kpi-context">Transfers, refunds, info</div>
+            <div class="kpi-context">Transfers, refunds, info, leave</div>
+        </div>
+    </div>
+</div>
+
+<!-- Pending Approvals & Requests Queue -->
+<div class="card mb-4 border-0 shadow-sm">
+    <div class="card-header bg-white py-3 d-flex align-items-center justify-content-between">
+        <div class="fw-bold d-flex align-items-center gap-2">
+            <i class="bi bi-clock-history text-warning fs-5"></i>
+            <span>Pending Approvals &amp; Requests</span>
+        </div>
+        <span class="badge <?= $pendingRequests > 0 ? 'bg-danger' : 'bg-secondary' ?>">
+            <?= $pendingRequests ?> total pending
+        </span>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-6 col-md-3">
+                <a href="<?= BASE_URL ?>/admin/trainer-leave.php?filter=pending" class="text-decoration-none">
+                    <div class="p-3 rounded border bg-light h-100 d-flex flex-column justify-content-between hover-shadow">
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                            <span class="small fw-semibold text-muted">Trainer Leave</span>
+                            <i class="bi bi-calendar2-x text-primary fs-5"></i>
+                        </div>
+                        <div class="d-flex align-items-baseline justify-content-between">
+                            <span class="h4 mb-0 fw-bold text-dark"><?= $pendingTrainerLeave ?></span>
+                            <span class="badge <?= $pendingTrainerLeave > 0 ? 'bg-danger' : 'bg-secondary' ?>">
+                                <?= $pendingTrainerLeave ?> pending
+                            </span>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            <div class="col-6 col-md-3">
+                <a href="<?= BASE_URL ?>/admin/refunds/?status=pending" class="text-decoration-none">
+                    <div class="p-3 rounded border bg-light h-100 d-flex flex-column justify-content-between hover-shadow">
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                            <span class="small fw-semibold text-muted">Refund Requests</span>
+                            <i class="bi bi-arrow-counterclockwise text-danger fs-5"></i>
+                        </div>
+                        <div class="d-flex align-items-baseline justify-content-between">
+                            <span class="h4 mb-0 fw-bold text-dark"><?= $pendingRefunds ?></span>
+                            <span class="badge <?= $pendingRefunds > 0 ? 'bg-danger' : 'bg-secondary' ?>">
+                                <?= $pendingRefunds ?> pending
+                            </span>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            <div class="col-6 col-md-3">
+                <a href="<?= BASE_URL ?>/admin/transfers/?status=pending" class="text-decoration-none">
+                    <div class="p-3 rounded border bg-light h-100 d-flex flex-column justify-content-between hover-shadow">
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                            <span class="small fw-semibold text-muted">Transfers</span>
+                            <i class="bi bi-arrow-left-right text-info fs-5"></i>
+                        </div>
+                        <div class="d-flex align-items-baseline justify-content-between">
+                            <span class="h4 mb-0 fw-bold text-dark"><?= $pendingTransfers ?></span>
+                            <span class="badge <?= $pendingTransfers > 0 ? 'bg-warning text-dark' : 'bg-secondary' ?>">
+                                <?= $pendingTransfers ?> pending
+                            </span>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            <div class="col-6 col-md-3">
+                <a href="<?= BASE_URL ?>/admin/change-requests/?status=pending" class="text-decoration-none">
+                    <div class="p-3 rounded border bg-light h-100 d-flex flex-column justify-content-between hover-shadow">
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                            <span class="small fw-semibold text-muted">Change Requests</span>
+                            <i class="bi bi-pencil-square text-success fs-5"></i>
+                        </div>
+                        <div class="d-flex align-items-baseline justify-content-between">
+                            <span class="h4 mb-0 fw-bold text-dark"><?= $pendingChanges ?></span>
+                            <span class="badge <?= $pendingChanges > 0 ? 'bg-warning text-dark' : 'bg-secondary' ?>">
+                                <?= $pendingChanges ?> pending
+                            </span>
+                        </div>
+                    </div>
+                </a>
+            </div>
         </div>
     </div>
 </div>
@@ -223,27 +312,58 @@ require_once ROOT_PATH . '/includes/header.php';
     <div class="col-12">
         <div class="card">
             <div class="card-header bg-white d-flex align-items-center justify-content-between pt-3 pb-3">
-                <div class="fw-bold"><i class="bi bi-exclamation-circle me-2 text-warning"></i>Upcoming Expirations (Next 7 Days)</div>
-                <a href="<?= BASE_URL ?>/admin/memberships/" class="btn btn-sm btn-outline-dark">Manage Memberships</a>
+                <div class="fw-bold d-flex align-items-center gap-2">
+                    <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+                    <span>Memberships Expiring in Next 7 Days</span>
+                    <span class="badge bg-warning text-dark"><?= count($upcomingExpirations) ?></span>
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="<?= BASE_URL ?>/admin/memberships/expiring.php" class="btn btn-sm btn-outline-warning text-dark">View Expiring List</a>
+                    <a href="<?= BASE_URL ?>/admin/memberships/" class="btn btn-sm btn-outline-dark">All Memberships</a>
+                </div>
             </div>
             <div class="table-responsive">
                 <table class="table align-middle mb-0">
                     <thead>
                         <tr>
                             <th>Member Name</th>
-                            <th>Expiration Date</th>
+                            <th>Plan</th>
+                            <th>Phone</th>
+                            <th>End Date</th>
                             <th class="text-end">Action</th>
                         </tr>
                     </thead>
                     <tbody>
                     <?php if (!$upcomingExpirations): ?>
-                        <tr><td colspan="3" class="text-muted text-center">No memberships expiring in the next 7 days.</td></tr>
-                    <?php else: foreach ($upcomingExpirations as $u): ?>
+                        <tr><td colspan="5" class="text-muted text-center py-4">No memberships expiring in the next 7 days.</td></tr>
+                    <?php else: foreach ($upcomingExpirations as $u):
+                        $todayObj  = new DateTime(date('Y-m-d'));
+                        $expireObj = new DateTime($u['expiry_date']);
+                        $diffDays  = (int) $todayObj->diff($expireObj)->format('%r%a');
+                        if ($diffDays <= 0) {
+                            $countdownBadge = '<span class="badge bg-danger">Expires Today</span>';
+                        } elseif ($diffDays === 1) {
+                            $countdownBadge = '<span class="badge bg-danger">Tomorrow</span>';
+                        } else {
+                            $countdownBadge = '<span class="badge bg-warning text-dark">In ' . $diffDays . ' days</span>';
+                        }
+                    ?>
                         <tr>
-                            <td class="fw-medium text-dark"><?= htmlspecialchars($u['full_name']) ?></td>
-                            <td><span class="badge bg-warning"><i class="bi bi-clock me-1"></i><?= formatDate($u['expiry_date']) ?></span></td>
+                            <td class="fw-medium text-dark">
+                                <a href="<?= BASE_URL ?>/admin/members/view.php?id=<?= $u['member_id'] ?>" class="text-decoration-none text-dark fw-semibold">
+                                    <?= htmlspecialchars($u['full_name']) ?>
+                                </a>
+                            </td>
+                            <td><span class="badge bg-light text-dark border"><?= htmlspecialchars($u['plan_name'] ?? 'Custom Plan') ?></span></td>
+                            <td class="text-muted small"><?= htmlspecialchars($u['phone'] ?? '—') ?></td>
+                            <td>
+                                <div><?= formatDate($u['expiry_date']) ?></div>
+                                <div><?= $countdownBadge ?></div>
+                            </td>
                             <td class="text-end">
-                                <a href="<?= BASE_URL ?>/admin/memberships/" class="btn btn-sm btn-outline-dark">Renew</a>
+                                <a href="<?= BASE_URL ?>/admin/memberships/add.php?member_id=<?= $u['member_id'] ?>" class="btn btn-sm btn-dark">
+                                    <i class="bi bi-arrow-repeat me-1"></i> Renew Plan
+                                </a>
                             </td>
                         </tr>
                     <?php endforeach; endif; ?>

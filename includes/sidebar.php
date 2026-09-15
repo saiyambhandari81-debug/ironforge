@@ -35,7 +35,7 @@
         </a>
         <a href="<?= BASE_URL ?>/admin/trainer-slots/" class="nav-item">
             <i class="bi bi-calendar3"></i>
-            <span>Trainer Slots</span>
+            <span>TrainerSlots</span>
         </a>
         <a href="<?= BASE_URL ?>/admin/trainer-leave.php" class="nav-item">
             <i class="bi bi-calendar2-x"></i>

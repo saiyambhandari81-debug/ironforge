@@ -22,7 +22,14 @@ $slots = $pdo->query("
     FROM trainer_slots ts
     JOIN trainers t ON t.trainer_id = ts.trainer_id
     WHERE ts.status = 'available'
-      AND t.status = 'active'
+      AND t.status != 'inactive'
+      AND (t.leave_start IS NULL OR t.leave_end IS NULL OR ts.slot_date NOT BETWEEN t.leave_start AND t.leave_end)
+      AND NOT EXISTS (
+          SELECT 1 FROM trainer_leave_requests tlr 
+          WHERE tlr.trainer_id = t.trainer_id 
+            AND tlr.status = 'approved' 
+            AND ts.slot_date BETWEEN tlr.start_date AND tlr.end_date
+      )
       AND ts.slot_date >= CURDATE()
     ORDER BY ts.slot_date, ts.start_time
 ")->fetchAll();
@@ -42,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->beginTransaction();
 
             $lock = $pdo->prepare("
-                SELECT ts.slot_id, ts.status, ts.slot_date, ts.trainer_id, t.status AS trainer_status
+                SELECT ts.slot_id, ts.status, ts.slot_date, ts.trainer_id, t.status AS trainer_status, t.leave_start, t.leave_end
                 FROM trainer_slots ts
                 JOIN trainers t ON t.trainer_id = ts.trainer_id
                 WHERE ts.slot_id = ?
@@ -51,11 +58,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $lock->execute([$slotId]);
             $slot = $lock->fetch();
 
+            $onLeave = false;
+            if ($slot && !empty($slot['leave_start']) && !empty($slot['leave_end'])) {
+                if ($slot['slot_date'] >= $slot['leave_start'] && $slot['slot_date'] <= $slot['leave_end']) {
+                    $onLeave = true;
+                }
+            }
+            if (!$onLeave && $slot) {
+                $chkLeave = $pdo->prepare("
+                    SELECT 1 FROM trainer_leave_requests 
+                    WHERE trainer_id = ? AND status = 'approved' AND ? BETWEEN start_date AND end_date 
+                    LIMIT 1
+                ");
+                $chkLeave->execute([$slot['trainer_id'], $slot['slot_date']]);
+                if ($chkLeave->fetch()) {
+                    $onLeave = true;
+                }
+            }
+
             if (!$slot) {
                 $errors[] = 'That slot does not exist.';
             } elseif ($slot['status'] !== 'available') {
                 $errors[] = 'That slot was just taken. Choose another.';
-            } elseif ($slot['trainer_status'] !== 'active') {
+            } elseif ($slot['trainer_status'] === 'inactive' || $onLeave) {
                 $errors[] = 'That trainer is not available.';
             } elseif ($slot['slot_date'] < date('Y-m-d')) {
                 $errors[] = 'Cannot book a past slot.';
@@ -76,7 +101,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     FROM trainer_slots ts
                     JOIN trainers t ON t.trainer_id = ts.trainer_id
                     WHERE ts.status = 'available'
-                      AND t.status = 'active'
+                      AND t.status != 'inactive'
+                      AND (t.leave_start IS NULL OR t.leave_end IS NULL OR ts.slot_date NOT BETWEEN t.leave_start AND t.leave_end)
+                      AND NOT EXISTS (
+                          SELECT 1 FROM trainer_leave_requests tlr 
+                          WHERE tlr.trainer_id = t.trainer_id 
+                            AND tlr.status = 'approved' 
+                            AND ts.slot_date BETWEEN tlr.start_date AND tlr.end_date
+                      )
                       AND ts.slot_date >= CURDATE()
                     ORDER BY ts.slot_date, ts.start_time
                 ")->fetchAll();

@@ -57,18 +57,40 @@ $pageTitle = 'Members';
 require_once ROOT_PATH . '/includes/header.php';
 ?>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <form method="GET" class="d-flex gap-2">
-        <input type="text" name="search" class="form-control" placeholder="Search name, email, phone" value="<?= htmlspecialchars($search) ?>">
-        <select name="status" class="form-select">
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <form method="GET" class="d-flex flex-wrap gap-2 align-items-center">
+        <div class="input-group" style="width: auto; min-width: 260px;">
+            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+            <input type="text" name="search" class="form-control" placeholder="Search by name, email, phone" value="<?= htmlspecialchars($search) ?>">
+        </div>
+        <select name="status" class="form-select" style="width: auto;">
             <option value="">All Statuses</option>
             <option value="active" <?= $statusFilter === 'active' ? 'selected' : '' ?>>Active</option>
             <option value="inactive" <?= $statusFilter === 'inactive' ? 'selected' : '' ?>>Inactive</option>
         </select>
-        <button type="submit" class="btn btn-outline-dark">Filter</button>
+        <button type="submit" class="btn btn-outline-dark">
+            <i class="bi bi-funnel me-1"></i> Filter
+        </button>
+        <?php if ($search !== '' || $statusFilter !== ''): ?>
+            <a href="<?= BASE_URL ?>/admin/members/" class="btn btn-outline-secondary">
+                <i class="bi bi-x-circle me-1"></i> Clear
+            </a>
+        <?php endif; ?>
     </form>
     <a href="<?= BASE_URL ?>/admin/members/add.php" class="btn btn-dark">+ Add Member</a>
 </div>
+
+<?php if ($search !== '' || $statusFilter !== ''): ?>
+    <div class="alert alert-light border py-2 px-3 mb-3 d-flex align-items-center justify-content-between">
+        <div class="small">
+            Showing results for <?= $search !== '' ? 'query <strong>"' . htmlspecialchars($search) . '"</strong>' : '' ?>
+            <?= ($search !== '' && $statusFilter !== '') ? ' with status ' : '' ?>
+            <?= $statusFilter !== '' ? '<strong>' . ucfirst(htmlspecialchars($statusFilter)) . '</strong>' : '' ?>
+            (<strong><?= $totalMembers ?></strong> <?= $totalMembers === 1 ? 'member' : 'members' ?> found)
+        </div>
+        <a href="<?= BASE_URL ?>/admin/members/" class="small text-muted text-decoration-none">Reset all filters</a>
+    </div>
+<?php endif; ?>
 
 <?php if ($flash): ?>
     <div class="alert alert-success"><?= htmlspecialchars($flash) ?></div>

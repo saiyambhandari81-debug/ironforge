@@ -92,3 +92,25 @@ function resolveDateRange(): array
 
     return ['range' => $range, 'start' => $start, 'end' => $end];
 }
+
+/**
+ * Automatically reactivates trainers whose approved leave end date has passed.
+ * Sets status back to 'active' if leave_end < CURDATE() and status was 'on_leave'.
+ */
+function autoReactivateTrainers(PDO $pdo): int
+{
+    try {
+        $stmt = $pdo->prepare("
+            UPDATE trainers 
+            SET status = 'active' 
+            WHERE status = 'on_leave' 
+              AND leave_end IS NOT NULL 
+              AND leave_end < CURDATE()
+        ");
+        $stmt->execute();
+        return $stmt->rowCount();
+    } catch (PDOException $e) {
+        // Table or columns might not exist if migration hasn't been run yet
+        return 0;
+    }
+}

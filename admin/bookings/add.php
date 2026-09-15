@@ -30,7 +30,14 @@ $slots = $pdo->query("
     FROM trainer_slots ts
     JOIN trainers t ON t.trainer_id = ts.trainer_id
     WHERE ts.status = 'available'
-      AND t.status = 'active'
+      AND t.status != 'inactive'
+      AND (t.leave_start IS NULL OR t.leave_end IS NULL OR ts.slot_date NOT BETWEEN t.leave_start AND t.leave_end)
+      AND NOT EXISTS (
+          SELECT 1 FROM trainer_leave_requests tlr 
+          WHERE tlr.trainer_id = t.trainer_id 
+            AND tlr.status = 'approved' 
+            AND ts.slot_date BETWEEN tlr.start_date AND tlr.end_date
+      )
       AND ts.slot_date >= CURDATE()
     ORDER BY ts.slot_date, ts.start_time
 ")->fetchAll();

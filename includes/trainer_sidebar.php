@@ -28,6 +28,10 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? '');
             <i class="bi bi-calendar2-x"></i>
             <span>Apply for Leave</span>
         </a>
+        <a href="<?= BASE_URL ?>/trainer/change-password.php" class="nav-item <?= $currentPage === 'change-password.php' ? 'active' : '' ?>">
+            <i class="bi bi-key"></i>
+            <span>Change Password</span>
+        </a>
     </div>
 
     <div class="sidebar-foot">

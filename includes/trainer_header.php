@@ -37,6 +37,10 @@ if (!isset($pageTitle)) {
             </div>
 
             <div class="d-flex align-items-center gap-2">
+                <a href="<?= BASE_URL ?>/trainer/change-password.php" class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" title="Change Password">
+                    <i class="bi bi-key"></i>
+                    <span class="d-none d-md-inline">Change Password</span>
+                </a>
                 <div class="admin-profile ms-2 ps-2 border-start border-light-subtle">
                     <div class="avatar-chip">
                         <?= strtoupper(substr($_SESSION['trainer_name'] ?? 'T', 0, 1)) ?>

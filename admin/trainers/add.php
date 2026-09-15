@@ -22,10 +22,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $old['specialization']   = trim($_POST['specialization'] ?? '');
     $old['experience_years'] = trim($_POST['experience_years'] ?? '');
     $old['salary']           = trim($_POST['salary'] ?? '');
+    $password                = (string) ($_POST['password'] ?? '');
+    $confirm                 = (string) ($_POST['confirm_password'] ?? '');
 
-    // ===== VALIDATION =====
-
-    // Full Name
+    // Full name
     if ($old['full_name'] === '') {
         $errors[] = 'Full name is required.';
     } elseif (mb_strlen($old['full_name']) < 2) {
@@ -33,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (mb_strlen($old['full_name']) > 100) {
         $errors[] = 'Full name cannot be longer than 100 characters.';
     } elseif (!preg_match('/^[\p{L}\s\'\-\.]+$/u', $old['full_name'])) {
-        $errors[] = 'Full name can only contain letters, spaces, hyphens, and apostrophes. Numbers are not allowed.';
+        $errors[] = 'Full name can only contain letters, spaces, hyphens, and apostrophes.';
     }
 
     // Email
@@ -42,53 +42,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (!filter_var($old['email'], FILTER_VALIDATE_EMAIL)) {
         $errors[] = 'Please enter a valid email address.';
     } else {
-        $check = $pdo->prepare("SELECT COUNT(*) FROM trainers WHERE email = ?");
+        $check = $pdo->prepare('SELECT COUNT(*) FROM trainers WHERE email = ?');
         $check->execute([$old['email']]);
-        if ($check->fetchColumn() > 0) {
+        if ((int) $check->fetchColumn() > 0) {
             $errors[] = 'A trainer with that email already exists.';
         }
     }
 
-    // Phone (Nepal - 10 digits)
+    // Phone
     if ($old['phone'] === '') {
         $errors[] = 'Phone number is required.';
     } elseif (!preg_match('/^(97|98|96|94)\d{8}$/', $old['phone'])) {
-        $errors[] = 'Phone number must be exactly 10 digits and start with 97, 98, 96, or 94.';
+        $errors[] = 'Phone must be 10 digits starting with 97, 98, 96, or 94.';
     }
 
-    // Specialization
     if ($old['specialization'] !== '' && mb_strlen($old['specialization']) > 100) {
         $errors[] = 'Specialization cannot be longer than 100 characters.';
     }
 
-    // Experience
     if ($old['experience_years'] === '' || !ctype_digit($old['experience_years'])) {
-        $errors[] = 'Experience must be a whole number of years.';
-    } elseif ((int) $old['experience_years'] > 50) {
-        $errors[] = 'Experience cannot be more than 50 years.';
+        $errors[] = 'Experience must be a whole number (0 or more).';
     }
 
-    // Salary
-    if ($old['salary'] === '' || !is_numeric($old['salary'])) {
-        $errors[] = 'Salary must be a valid number.';
-    } elseif ((float) $old['salary'] < 0) {
-        $errors[] = 'Salary cannot be negative.';
-    } elseif ((float) $old['salary'] > 500000) {
-        $errors[] = 'Salary cannot be more than Rs. 500,000.';
+    if ($old['salary'] === '' || !is_numeric($old['salary']) || (float) $old['salary'] < 0) {
+        $errors[] = 'Salary must be a valid amount (0 or more).';
+    }
+
+    // Portal password (required for trainer login)
+    if ($password === '') {
+        $errors[] = 'Password is required so the trainer can log in.';
+    } elseif (strlen($password) < 6) {
+        $errors[] = 'Password must be at least 6 characters.';
+    }
+    if ($password !== $confirm) {
+        $errors[] = 'Password and confirm password do not match.';
     }
 
     if (!$errors) {
+        $hash = password_hash($password, PASSWORD_DEFAULT);
+
         $stmt = $pdo->prepare(
-            "INSERT INTO trainers (full_name, email, phone, specialization, experience_years, salary, status)
-             VALUES (?, ?, ?, ?, ?, ?, 'active')"
+            "INSERT INTO trainers
+                (full_name, email, phone, specialization, experience_years, salary, status, password_hash)
+             VALUES (?, ?, ?, ?, ?, ?, 'active', ?)"
         );
         $stmt->execute([
             $old['full_name'],
             $old['email'],
             $old['phone'],
             $old['specialization'] !== '' ? $old['specialization'] : null,
-            $old['experience_years'],
-            $old['salary'],
+            (int) $old['experience_years'],
+            (float) $old['salary'],
+            $hash,
         ]);
 
         header('Location: ' . BASE_URL . '/admin/trainers/?msg=added');
@@ -117,33 +122,53 @@ require_once ROOT_PATH . '/includes/header.php';
 
             <div class="mb-3">
                 <label class="form-label">Full Name *</label>
-                <input type="text" name="full_name" class="form-control" value="<?= htmlspecialchars($old['full_name']) ?>" required>
+                <input type="text" name="full_name" class="form-control"
+                       value="<?= htmlspecialchars($old['full_name']) ?>" required>
             </div>
 
             <div class="row">
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Email *</label>
-                    <input type="email" name="email" class="form-control" value="<?= htmlspecialchars($old['email']) ?>" required>
+                    <input type="email" name="email" class="form-control"
+                           value="<?= htmlspecialchars($old['email']) ?>" required>
                 </div>
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Phone *</label>
-                    <input type="text" name="phone" class="form-control" value="<?= htmlspecialchars($old['phone']) ?>" required>
+                    <input type="text" name="phone" class="form-control"
+                           value="<?= htmlspecialchars($old['phone']) ?>" required>
                 </div>
             </div>
 
             <div class="mb-3">
                 <label class="form-label">Specialization</label>
-                <input type="text" name="specialization" class="form-control" value="<?= htmlspecialchars($old['specialization']) ?>" placeholder="e.g. Strength training, Yoga, Nutrition">
+                <input type="text" name="specialization" class="form-control"
+                       value="<?= htmlspecialchars($old['specialization']) ?>">
             </div>
 
             <div class="row">
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Experience (years) *</label>
-                    <input type="number" step="1" min="0" name="experience_years" class="form-control" value="<?= htmlspecialchars($old['experience_years']) ?>" required>
+                    <input type="number" step="1" min="0" name="experience_years" class="form-control"
+                           value="<?= htmlspecialchars($old['experience_years']) ?>" required>
                 </div>
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Salary (Rs./month) *</label>
-                    <input type="number" step="0.01" min="0" name="salary" class="form-control" value="<?= htmlspecialchars($old['salary']) ?>" required>
+                    <input type="number" step="0.01" min="0" name="salary" class="form-control"
+                           value="<?= htmlspecialchars($old['salary']) ?>" required>
+                </div>
+            </div>
+
+            <hr>
+            <p class="text-muted small">Portal password — used on the main login page for the trainer account.</p>
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Password *</label>
+                    <input type="password" name="password" class="form-control" required minlength="6">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Confirm password *</label>
+                    <input type="password" name="confirm_password" class="form-control" required minlength="6">
                 </div>
             </div>
 

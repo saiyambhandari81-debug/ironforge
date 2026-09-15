@@ -4,11 +4,20 @@ require_once ROOT_PATH . '/includes/auth.php';
 requireLogin();
 
 $members  = $pdo->query("SELECT member_id, full_name FROM members WHERE status = 'active' ORDER BY full_name")->fetchAll();
-$trainers = $pdo->query("SELECT trainer_id, full_name FROM trainers WHERE status = 'active' ORDER BY full_name")->fetchAll();
+$trainers = $pdo->query("SELECT trainer_id, full_name FROM trainers WHERE status != 'inactive' ORDER BY full_name")->fetchAll();
 
 $trainerFilter = trim($_GET['trainer_id'] ?? '');
 
-$slotWhere  = "WHERE ts.status = 'available' AND ts.slot_date >= CURDATE()";
+$slotWhere  = "WHERE ts.status = 'available' 
+  AND t.status != 'inactive' 
+  AND (t.leave_start IS NULL OR t.leave_end IS NULL OR ts.slot_date NOT BETWEEN t.leave_start AND t.leave_end)
+  AND NOT EXISTS (
+      SELECT 1 FROM trainer_leave_requests tlr 
+      WHERE tlr.trainer_id = t.trainer_id 
+        AND tlr.status = 'approved' 
+        AND ts.slot_date BETWEEN tlr.start_date AND tlr.end_date
+  )
+  AND ts.slot_date >= CURDATE()";
 $slotParams = [];
 
 if ($trainerFilter !== '') {
