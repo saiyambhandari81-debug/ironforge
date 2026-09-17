@@ -39,7 +39,11 @@ require_once ROOT_PATH . '/includes/header.php';
                     <span class="badge bg-<?= $plan['status'] === 'active' ? 'success' : 'secondary' ?>"><?= ucfirst($plan['status']) ?></span>
                 </div>
                 <p class="fs-4 fw-semibold mb-1"><?= formatMoney($plan['price']) ?></p>
-                <p class="text-muted mb-3"><?= (int) $plan['duration_days'] ?> days</p>
+                <p class="text-muted mb-1"><?= (int) $plan['duration_days'] ?> days</p>
+                <p class="mb-2">
+                    <strong>Trainer:</strong>
+                    <?= !empty($plan['includes_trainer']) ? 'Yes' : 'No' ?>
+                </p>
                 <p class="mb-4 flex-grow-1"><?= nl2br(htmlspecialchars($plan['features'] ?: 'No features listed.')) ?></p>
                 <div class="d-flex gap-2">
                     <a href="<?= BASE_URL ?>/admin/plans/edit.php?id=<?= $plan['plan_id'] ?>" class="btn btn-sm btn-outline-secondary">Edit</a>

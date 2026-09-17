@@ -114,3 +114,76 @@ function autoReactivateTrainers(PDO $pdo): int
         return 0;
     }
 }
+
+function plansHasColumn(PDO $pdo, string $column): bool
+{
+    static $cache = [];
+    if (array_key_exists($column, $cache)) {
+        return $cache[$column];
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = \'plans\'
+           AND COLUMN_NAME = ?'
+    );
+    $stmt->execute([$column]);
+    $cache[$column] = ((int) $stmt->fetchColumn()) > 0;
+
+    return $cache[$column];
+}
+
+function trainerBookingUpgradeMessage(): string
+{
+    return 'Your plan does not include personal training. Upgrade to Premium (Gym + Cardio + Personal trainer) to book a trainer.';
+}
+
+function trainerBookingAdminUpgradeMessage(): string
+{
+    return 'This member\'s plan does not include personal training. Upgrade to Premium (Gym + Cardio + Personal trainer) to book a trainer.';
+}
+
+/**
+ * Active unexpired membership plus a plan with includes_trainer = 1.
+ *
+ * @return array{ok:bool, code:?string, error:?string}
+ */
+function memberCanBookTrainer(PDO $pdo, int $memberId, bool $forAdmin = false): array
+{
+    $hasTrainerCol = plansHasColumn($pdo, 'includes_trainer');
+    $trainerExpr = $hasTrainerCol ? 'p.includes_trainer' : '0';
+
+    $stmt = $pdo->prepare("
+        SELECT ms.membership_id, {$trainerExpr} AS includes_trainer
+        FROM memberships ms
+        INNER JOIN plans p ON p.plan_id = ms.plan_id
+        WHERE ms.member_id = ?
+          AND ms.status = 'active'
+          AND ms.expiry_date >= CURDATE()
+        ORDER BY ms.expiry_date DESC
+        LIMIT 1
+    ");
+    $stmt->execute([$memberId]);
+    $row = $stmt->fetch();
+
+    if (!$row) {
+        return [
+            'ok'    => false,
+            'code'  => 'no_membership',
+            'error' => $forAdmin
+                ? 'Member has no active membership. Cannot book.'
+                : 'You need an active membership to book a trainer.',
+        ];
+    }
+
+    if ((int) $row['includes_trainer'] !== 1) {
+        return [
+            'ok'    => false,
+            'code'  => 'no_trainer',
+            'error' => $forAdmin ? trainerBookingAdminUpgradeMessage() : trainerBookingUpgradeMessage(),
+        ];
+    }
+
+    return ['ok' => true, 'code' => null, 'error' => null];
+}

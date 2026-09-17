@@ -32,28 +32,66 @@ if ($valid && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $new = (string) ($_POST['new_password'] ?? '');
     $confirm = (string) ($_POST['confirm_password'] ?? '');
 
-    if (strlen($new) < 6) {
-        $errors[] = 'Password must be at least 6 characters.';
-    } elseif ($new !== $confirm) {
-        $errors[] = 'Passwords do not match.';
-    } else {
+    if (strlen($new) < 8) {
+        $errors[] = 'Password must be at least 8 characters.';
+    }
+    if ($new !== $confirm) {
+        $errors[] = 'New password and confirmation must match.';
+    }
+    if ($new !== '' && !preg_match('/[A-Za-z]/', $new)) {
+        $errors[] = 'Password must include at least one letter.';
+    }
+    if ($new !== '' && !preg_match('/[0-9]/', $new)) {
+        $errors[] = 'Password must include at least one number.';
+    }
+
+    if (!$errors) {
         $hash = password_hash($new, PASSWORD_DEFAULT);
         $email = $resetRow['email'];
         $type = $resetRow['user_type'];
 
-        if ($type === 'admin') {
-            $pdo->prepare('UPDATE admins SET password_hash = ? WHERE email = ?')->execute([$hash, $email]);
-        } elseif ($type === 'trainer') {
-            $pdo->prepare('UPDATE trainers SET password_hash = ? WHERE email = ?')->execute([$hash, $email]);
-        } else {
-            $pdo->prepare('UPDATE members SET password_hash = ? WHERE email = ?')->execute([$hash, $email]);
+        try {
+            $pdo->beginTransaction();
+
+            $lock = $pdo->prepare(
+                "SELECT id FROM password_resets
+                 WHERE id = ? AND used_at IS NULL AND expires_at > NOW()
+                 FOR UPDATE"
+            );
+            $lock->execute([(int) $resetRow['id']]);
+            if (!$lock->fetch()) {
+                $pdo->rollBack();
+                $valid = false;
+                $errors[] = 'This reset link is invalid or has expired.';
+            } else {
+                if ($type === 'admin') {
+                    $pdo->prepare('UPDATE admins SET password_hash = ? WHERE email = ?')->execute([$hash, $email]);
+                } elseif ($type === 'trainer') {
+                    $pdo->prepare('UPDATE trainers SET password_hash = ? WHERE email = ?')->execute([$hash, $email]);
+                } elseif ($type === 'member') {
+                    $pdo->prepare('UPDATE members SET password_hash = ? WHERE email = ?')->execute([$hash, $email]);
+                } else {
+                    $pdo->rollBack();
+                    $errors[] = 'This reset link is invalid or has expired.';
+                    $valid = false;
+                }
+
+                if (!$errors) {
+                    $pdo->prepare(
+                        'UPDATE password_resets SET used_at = NOW() WHERE email = ? AND used_at IS NULL'
+                    )->execute([$email]);
+
+                    $pdo->commit();
+                    $success = 'Password updated. You can log in now.';
+                    $valid = false;
+                }
+            }
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            $errors[] = 'Could not update password. Please try again.';
         }
-
-        $pdo->prepare('UPDATE password_resets SET used_at = NOW() WHERE id = ?')
-            ->execute([$resetRow['id']]);
-
-        $success = 'Password updated. You can log in now.';
-        $valid = false;
     }
 }
 ?>
@@ -89,11 +127,12 @@ if ($valid && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
                     <div class="mb-3">
                         <label class="form-label">New password *</label>
-                        <input type="password" name="new_password" class="form-control" required minlength="6">
+                        <input type="password" name="new_password" class="form-control" required minlength="8">
+                        <div class="form-text">At least 8 characters, including a letter and a number.</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Confirm password *</label>
-                        <input type="password" name="confirm_password" class="form-control" required minlength="6">
+                        <input type="password" name="confirm_password" class="form-control" required minlength="8">
                     </div>
                     <button type="submit" class="btn btn-dark w-100">Save password</button>
                 </form>

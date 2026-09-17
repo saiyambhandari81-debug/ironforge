@@ -7,14 +7,9 @@ $memberId = (int) $_SESSION['member_id'];
 $errors = [];
 $success = '';
 
-// Active membership?
-$ms = $pdo->prepare("
-    SELECT membership_id FROM memberships
-    WHERE member_id = ? AND status = 'active' AND expiry_date >= CURDATE()
-    LIMIT 1
-");
-$ms->execute([$memberId]);
-$hasMembership = (bool) $ms->fetch();
+$bookingAccess = memberCanBookTrainer($pdo, $memberId);
+$hasMembership = ($bookingAccess['ok'] || $bookingAccess['code'] !== 'no_membership');
+$canBookTrainer = $bookingAccess['ok'];
 
 // Available future slots
 $slots = $pdo->query("
@@ -25,9 +20,9 @@ $slots = $pdo->query("
       AND t.status != 'inactive'
       AND (t.leave_start IS NULL OR t.leave_end IS NULL OR ts.slot_date NOT BETWEEN t.leave_start AND t.leave_end)
       AND NOT EXISTS (
-          SELECT 1 FROM trainer_leave_requests tlr 
-          WHERE tlr.trainer_id = t.trainer_id 
-            AND tlr.status = 'approved' 
+          SELECT 1 FROM trainer_leave_requests tlr
+          WHERE tlr.trainer_id = t.trainer_id
+            AND tlr.status = 'approved'
             AND ts.slot_date BETWEEN tlr.start_date AND tlr.end_date
       )
       AND ts.slot_date >= CURDATE()
@@ -39,9 +34,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCsrf();
 
     $slotId = (int) ($_POST['slot_id'] ?? 0);
+    $bookingAccess = memberCanBookTrainer($pdo, $memberId);
+    $hasMembership = ($bookingAccess['ok'] || $bookingAccess['code'] !== 'no_membership');
+    $canBookTrainer = $bookingAccess['ok'];
 
-    if (!$hasMembership) {
-        $errors[] = 'You need an active membership to book a trainer.';
+    if (!$bookingAccess['ok']) {
+        $errors[] = $bookingAccess['error'];
     } elseif ($slotId <= 0) {
         $errors[] = 'Please select a slot.';
     } else {
@@ -66,8 +64,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if (!$onLeave && $slot) {
                 $chkLeave = $pdo->prepare("
-                    SELECT 1 FROM trainer_leave_requests 
-                    WHERE trainer_id = ? AND status = 'approved' AND ? BETWEEN start_date AND end_date 
+                    SELECT 1 FROM trainer_leave_requests
+                    WHERE trainer_id = ? AND status = 'approved' AND ? BETWEEN start_date AND end_date
                     LIMIT 1
                 ");
                 $chkLeave->execute([$slot['trainer_id'], $slot['slot_date']]);
@@ -85,6 +83,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($slot['slot_date'] < date('Y-m-d')) {
                 $errors[] = 'Cannot book a past slot.';
             } else {
+                $bookingAccess = memberCanBookTrainer($pdo, $memberId);
+                if (!$bookingAccess['ok']) {
+                    $errors[] = $bookingAccess['error'];
+                } else {
                 $pdo->prepare("
                     INSERT INTO bookings (member_id, trainer_id, slot_id, booking_status)
                     VALUES (?, ?, ?, 'pending')
@@ -104,14 +106,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                       AND t.status != 'inactive'
                       AND (t.leave_start IS NULL OR t.leave_end IS NULL OR ts.slot_date NOT BETWEEN t.leave_start AND t.leave_end)
                       AND NOT EXISTS (
-                          SELECT 1 FROM trainer_leave_requests tlr 
-                          WHERE tlr.trainer_id = t.trainer_id 
-                            AND tlr.status = 'approved' 
+                          SELECT 1 FROM trainer_leave_requests tlr
+                          WHERE tlr.trainer_id = t.trainer_id
+                            AND tlr.status = 'approved'
                             AND ts.slot_date BETWEEN tlr.start_date AND tlr.end_date
                       )
                       AND ts.slot_date >= CURDATE()
                     ORDER BY ts.slot_date, ts.start_time
                 ")->fetchAll();
+                }
             }
 
             if ($errors && $pdo->inTransaction()) {
@@ -162,7 +165,9 @@ require ROOT_PATH . '/includes/user_header.php';
     <h2 class="h6 mb-3">Request a trainer session</h2>
 
     <?php if (!$hasMembership): ?>
-        <p class="text-muted mb-0">You need an active membership first. Contact the front desk.</p>
+        <div class="alert alert-info mb-0">You need an active membership to book a trainer. Contact the front desk or apply for a plan.</div>
+    <?php elseif (!$canBookTrainer): ?>
+        <div class="alert alert-info mb-0"><?= htmlspecialchars(trainerBookingUpgradeMessage()) ?></div>
     <?php elseif (!$slots): ?>
         <p class="text-muted mb-0">No available slots right now. Try again later.</p>
     <?php else: ?>

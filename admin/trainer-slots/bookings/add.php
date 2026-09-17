@@ -58,6 +58,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $mcheck->execute([$memberId]);
         if ($mcheck->fetchColumn() == 0) {
             $errors[] = 'That member could not be found or is inactive.';
+        } else {
+            $access = memberCanBookTrainer($pdo, $memberId, true);
+            if (!$access['ok']) {
+                $errors[] = $access['error'];
+            }
         }
     }
 
@@ -77,6 +82,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->rollBack();
                 $errors[] = 'That slot was just taken (or no longer exists). Please pick another.';
             } else {
+                $access = memberCanBookTrainer($pdo, $memberId, true);
+                if (!$access['ok']) {
+                    $pdo->rollBack();
+                    $errors[] = $access['error'];
+                } else {
                 // Create the booking
                 $insertBooking = $pdo->prepare(
                     "INSERT INTO bookings (member_id, trainer_id, slot_id, booking_status) 
@@ -92,6 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 header('Location: ' . BASE_URL . '/admin/bookings/?msg=added');
                 exit;
+                }
             }
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -116,9 +127,15 @@ require_once ROOT_PATH . '/includes/header.php';
             </div>
         <?php endif; ?>
 
+        <div class="alert alert-info">
+            Only members with an <strong>active, unexpired</strong> membership on a plan that
+            <strong>includes trainer booking</strong> (Premium: Gym + Cardio + Personal trainer) can be booked.
+            Basic and Standard plans cannot book trainers.
+        </div>
+
         <?php if (!$members): ?>
             <div class="alert alert-warning">
-                You need at least one active member first. 
+                You need at least one active member first.
                 <a href="<?= BASE_URL ?>/admin/members/add.php">Add one here</a>.
             </div>
         <?php else: ?>

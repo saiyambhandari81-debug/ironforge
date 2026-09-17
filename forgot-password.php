@@ -20,6 +20,30 @@ $success = '';
 $demoLink = '';
 $email = '';
 
+$genericMessage = 'If that email is registered, check your email.';
+$waitMessage = 'Please wait before trying again.';
+
+/**
+ * Demo reset URL is shown only on a local host (any port).
+ */
+function isLocalPasswordResetHost(): bool
+{
+    $host = strtolower(trim((string) ($_SERVER['HTTP_HOST'] ?? '')));
+    $hostname = preg_replace('/:\d+$/', '', $host);
+
+    return in_array($hostname, ['localhost', '127.0.0.1', '::1'], true)
+        || in_array($host, ['localhost', 'localhost:8080', '127.0.0.1', '127.0.0.1:8080'], true);
+}
+
+function forgotPasswordClientIp(): string
+{
+    $ip = (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+    if (strlen($ip) > 45) {
+        $ip = substr($ip, 0, 45);
+    }
+    return $ip;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCsrf();
     $email = trim($_POST['email'] ?? '');
@@ -27,55 +51,104 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $errors[] = 'Please enter a valid email address.';
     } else {
-        $userType = null;
-        $hasPassword = false;
+        $ip = forgotPasswordClientIp();
+        $ipLimited = false;
+        $emailLimited = false;
 
-        $stmt = $pdo->prepare('SELECT password_hash FROM admins WHERE email = ? AND status = ? LIMIT 1');
-        $stmt->execute([$email, 'active']);
-        $row = $stmt->fetch();
-        if ($row) {
-            $userType = 'admin';
-            $hasPassword = !empty($row['password_hash']);
+        try {
+            $ipCount = $pdo->prepare(
+                "SELECT COUNT(*) FROM password_reset_attempts
+                 WHERE ip = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 60 MINUTE)"
+            );
+            $ipCount->execute([$ip]);
+            if ((int) $ipCount->fetchColumn() >= 10) {
+                $ipLimited = true;
+            }
+
+            $logAttempt = $pdo->prepare(
+                'INSERT INTO password_reset_attempts (ip, email) VALUES (?, ?)'
+            );
+            $logAttempt->execute([$ip, $email]);
+        } catch (PDOException $e) {
+            // Attempts table missing: skip IP throttle until migration is run.
         }
 
-        if (!$userType) {
-            $stmt = $pdo->prepare('SELECT password_hash, status FROM trainers WHERE email = ? LIMIT 1');
-            $stmt->execute([$email]);
+        if ($ipLimited) {
+            $success = $waitMessage;
+        } else {
+            try {
+                $emailCount = $pdo->prepare(
+                    "SELECT COUNT(*) FROM password_resets
+                     WHERE email = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 60 MINUTE)"
+                );
+                $emailCount->execute([$email]);
+                if ((int) $emailCount->fetchColumn() >= 3) {
+                    $emailLimited = true;
+                }
+            } catch (PDOException $e) {
+                $emailLimited = false;
+            }
+
+            $userType = null;
+            $hasPassword = false;
+
+            $stmt = $pdo->prepare('SELECT password_hash FROM admins WHERE email = ? AND status = ? LIMIT 1');
+            $stmt->execute([$email, 'active']);
             $row = $stmt->fetch();
-            if ($row && ($row['status'] ?? '') !== 'inactive') {
-                $userType = 'trainer';
+            if ($row) {
+                $userType = 'admin';
                 $hasPassword = !empty($row['password_hash']);
             }
-        }
 
-        if (!$userType) {
-            $stmt = $pdo->prepare('SELECT password_hash, status FROM members WHERE email = ? LIMIT 1');
-            $stmt->execute([$email]);
-            $row = $stmt->fetch();
-            if ($row && ($row['status'] ?? 'active') === 'active') {
-                $userType = 'member';
-                $hasPassword = !empty($row['password_hash']);
+            if (!$userType) {
+                $stmt = $pdo->prepare('SELECT password_hash, status FROM trainers WHERE email = ? LIMIT 1');
+                $stmt->execute([$email]);
+                $row = $stmt->fetch();
+                if ($row && ($row['status'] ?? '') !== 'inactive') {
+                    $userType = 'trainer';
+                    $hasPassword = !empty($row['password_hash']);
+                }
             }
-        }
 
-        $success = 'If that email is registered, a reset link is ready.';
+            if (!$userType) {
+                $stmt = $pdo->prepare('SELECT password_hash, status FROM members WHERE email = ? LIMIT 1');
+                $stmt->execute([$email]);
+                $row = $stmt->fetch();
+                if ($row && ($row['status'] ?? 'active') === 'active') {
+                    $userType = 'member';
+                    $hasPassword = !empty($row['password_hash']);
+                }
+            }
 
-        if ($userType && $hasPassword) {
-            $pdo->prepare(
-                "UPDATE password_resets SET used_at = NOW() WHERE email = ? AND used_at IS NULL"
-            )->execute([$email]);
+            $success = $genericMessage;
 
-            $token = bin2hex(random_bytes(32));
-            $tokenHash = hash('sha256', $token);
-            $expires = date('Y-m-d H:i:s', time() + 3600);
+            if (!$emailLimited && $userType && $hasPassword) {
+                $pdo->prepare(
+                    'UPDATE password_resets SET used_at = NOW() WHERE email = ? AND used_at IS NULL'
+                )->execute([$email]);
 
-            $pdo->prepare(
-                "INSERT INTO password_resets (email, user_type, token_hash, expires_at) VALUES (?, ?, ?, ?)"
-            )->execute([$email, $userType, $tokenHash, $expires]);
+                $token = bin2hex(random_bytes(32));
+                $tokenHash = hash('sha256', $token);
+                $expires = date('Y-m-d H:i:s', time() + 900);
 
-            $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-            $host = $_SERVER['HTTP_HOST'] ?? 'localhost:8080';
-            $demoLink = $scheme . '://' . $host . BASE_URL . '/reset-password.php?token=' . urlencode($token);
+                $pdo->prepare(
+                    'INSERT INTO password_resets (email, user_type, token_hash, expires_at) VALUES (?, ?, ?, ?)'
+                )->execute([$email, $userType, $tokenHash, $expires]);
+
+                $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                $host = $_SERVER['HTTP_HOST'] ?? 'localhost:8080';
+                $resetUrl = $scheme . '://' . $host . BASE_URL . '/reset-password.php?token=' . urlencode($token);
+
+                @mail(
+                    $email,
+                    'IronForge password reset',
+                    "Use this link to reset your password (valid for 15 minutes):\n" . $resetUrl
+                );
+
+                if (isLocalPasswordResetHost()) {
+                    $demoLink = $resetUrl;
+                }
+            }
         }
     }
 }
@@ -105,7 +178,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
 
             <?php if ($success): ?>
-                <div class="alert alert-success"><?= htmlspecialchars($success) ?></div>
+                <div class="alert <?= $success === $waitMessage ? 'alert-warning' : 'alert-success' ?>"><?= htmlspecialchars($success) ?></div>
                 <?php if ($demoLink): ?>
                     <div class="alert alert-info small">
                         <strong>Local demo link:</strong><br>

@@ -35,7 +35,7 @@ $existing = $blockStmt->fetch();
 
 // Available plans
 $plans = $pdo->query("
-    SELECT plan_id, plan_name, price, duration_days
+    SELECT plan_id, plan_name, price, duration_days, features
     FROM plans
     WHERE status = 'active'
     ORDER BY price ASC
@@ -173,6 +173,7 @@ require ROOT_PATH . '/includes/user_header.php';
                             <?= htmlspecialchars($p['plan_name']) ?>
                             — <?= formatMoney($p['price']) ?>
                             / <?= (int) $p['duration_days'] ?> days
+                            <?= !empty($p['features']) ? ' — ' . htmlspecialchars($p['features']) : '' ?>
                         </option>
                     <?php endforeach; ?>
                 </select>

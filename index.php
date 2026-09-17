@@ -610,7 +610,7 @@ $activePlansCount   = (int) $pdo->query("SELECT COUNT(*) FROM plans WHERE status
                 </h2>
                 <div id="faq3" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
                     <div class="accordion-body text-muted small">
-                        Members with active subscriptions can log into their portal, navigate to Bookings, view trainer availability schedules, and reserve personal workout slots in real time.
+                        Premium members (Gym + Cardio + Personal trainer) with an active, unexpired membership can log into their portal, open Bookings, and reserve trainer slots. Basic and Standard plans do not include personal training.
                     </div>
                 </div>
             </div>

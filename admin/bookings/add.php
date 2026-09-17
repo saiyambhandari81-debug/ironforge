@@ -61,14 +61,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$member || $member['status'] !== 'active') {
             $errors[] = 'Selected member is not active.';
         } else {
-            $ms = $pdo->prepare("
-                SELECT membership_id FROM memberships
-                WHERE member_id = ? AND status = 'active' AND expiry_date >= CURDATE()
-                LIMIT 1
-            ");
-            $ms->execute([$memberId]);
-            if (!$ms->fetch()) {
-                $errors[] = 'Member has no active membership. Cannot book.';
+            $access = memberCanBookTrainer($pdo, $memberId, true);
+            if (!$access['ok']) {
+                $errors[] = $access['error'];
             }
         }
     }
@@ -109,18 +104,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->rollBack();
                 $errors[] = 'That slot was just taken. Choose another.';
             } else {
-                $ins = $pdo->prepare("
-                    INSERT INTO bookings (member_id, trainer_id, slot_id, booking_status)
-                    VALUES (?, ?, ?, 'pending')
-                ");
-                $ins->execute([$memberId, $locked['trainer_id'], $slotId]);
+                $access = memberCanBookTrainer($pdo, $memberId, true);
+                if (!$access['ok']) {
+                    $pdo->rollBack();
+                    $errors[] = $access['error'];
+                } else {
+                    $ins = $pdo->prepare("
+                        INSERT INTO bookings (member_id, trainer_id, slot_id, booking_status)
+                        VALUES (?, ?, ?, 'pending')
+                    ");
+                    $ins->execute([$memberId, $locked['trainer_id'], $slotId]);
 
-                $upd = $pdo->prepare("UPDATE trainer_slots SET status = 'booked' WHERE slot_id = ?");
-                $upd->execute([$slotId]);
+                    $upd = $pdo->prepare("UPDATE trainer_slots SET status = 'booked' WHERE slot_id = ?");
+                    $upd->execute([$slotId]);
 
-                $pdo->commit();
-                header('Location: ' . BASE_URL . '/admin/bookings/?msg=added');
-                exit;
+                    $pdo->commit();
+                    header('Location: ' . BASE_URL . '/admin/bookings/?msg=added');
+                    exit;
+                }
             }
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
@@ -147,6 +148,12 @@ require_once ROOT_PATH . '/includes/header.php';
             </ul>
         </div>
     <?php endif; ?>
+
+    <div class="alert alert-info">
+        Only members with an <strong>active, unexpired</strong> membership on a plan that
+        <strong>includes trainer booking</strong> (Premium: Gym + Cardio + Personal trainer) can be booked.
+        Basic and Standard plans cannot book trainers.
+    </div>
 
     <?php if (!$members): ?>
         <div class="alert alert-warning">No members with an active membership. Add a membership first.</div>
