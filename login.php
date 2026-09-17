@@ -28,9 +28,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($email === '' || $password === '') {
         $errors[] = 'Email and password are required.';
     } else {
-        // Admin
+        // Try admin first
         $stmt = $pdo->prepare(
-            'SELECT admin_id, full_name, role, password_hash, status FROM admins WHERE email = ? LIMIT 1'
+            'SELECT admin_id, full_name, role, password_hash, status, email_verified
+             FROM admins WHERE email = ? LIMIT 1'
         );
         $stmt->execute([$email]);
         $admin = $stmt->fetch();
@@ -40,65 +41,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             && ($admin['status'] ?? 'active') === 'active'
             && password_verify($password, $admin['password_hash'])
         ) {
-            session_regenerate_id(true);
-            $_SESSION['admin_id']   = $admin['admin_id'];
-            $_SESSION['admin_name'] = $admin['full_name'];
-            $_SESSION['admin_role'] = $admin['role'];
-
-            unset(
-                $_SESSION['trainer_id'],
-                $_SESSION['trainer_name'],
-                $_SESSION['member_id'],
-                $_SESSION['member_name']
-            );
-
-            header('Location: ' . BASE_URL . '/admin/dashboard.php');
-            exit;
-        }
-
-        // Trainer
-        $stmt = $pdo->prepare(
-            'SELECT trainer_id, full_name, password_hash, status, leave_end FROM trainers WHERE email = ? LIMIT 1'
-        );
-        $stmt->execute([$email]);
-        $trainer = $stmt->fetch();
-
-        if (
-            $trainer
-            && !empty($trainer['password_hash'])
-            && password_verify($password, $trainer['password_hash'])
-        ) {
-            // Auto-reactivate trainer if leave has ended
-            if (($trainer['status'] ?? '') === 'on_leave' && !empty($trainer['leave_end']) && $trainer['leave_end'] < date('Y-m-d')) {
-                $pdo->prepare("UPDATE trainers SET status = 'active' WHERE trainer_id = ?")->execute([$trainer['trainer_id']]);
-                $trainer['status'] = 'active';
-            }
-
-            if (($trainer['status'] ?? 'active') === 'inactive') {
-                $errors[] = 'Your account is not active. Contact the gym.';
+            // Admins: allow if verified or column missing treated as ok (default 1)
+            if (isset($admin['email_verified']) && (int) $admin['email_verified'] === 0) {
+                $errors[] = 'Please verify your email before logging in.';
             } else {
                 session_regenerate_id(true);
-
-                unset(
-                    $_SESSION['admin_id'],
-                    $_SESSION['admin_name'],
-                    $_SESSION['admin_role'],
-                    $_SESSION['member_id'],
-                    $_SESSION['member_name']
-                );
-
-                $_SESSION['trainer_id']   = $trainer['trainer_id'];
-                $_SESSION['trainer_name'] = $trainer['full_name'];
-
-                header('Location: ' . BASE_URL . '/trainer/index.php');
+                $_SESSION['admin_id']   = $admin['admin_id'];
+                $_SESSION['admin_name'] = $admin['full_name'];
+                $_SESSION['admin_role'] = $admin['role'];
+                header('Location: ' . BASE_URL . '/admin/dashboard.php');
                 exit;
             }
         }
 
-        // Member
+        // Try trainer next
         if (empty($errors)) {
             $stmt = $pdo->prepare(
-                'SELECT member_id, full_name, password_hash, status FROM members WHERE email = ? LIMIT 1'
+                'SELECT trainer_id, full_name, password_hash, status, email_verified
+                 FROM trainers WHERE email = ? LIMIT 1'
+            );
+            $stmt->execute([$email]);
+            $trainer = $stmt->fetch();
+
+            if (
+                $trainer
+                && !empty($trainer['password_hash'])
+                && password_verify($password, $trainer['password_hash'])
+            ) {
+                if (($trainer['status'] ?? 'active') === 'inactive') {
+                    $errors[] = 'Your account is not active. Contact the gym.';
+                } elseif (isset($trainer['email_verified']) && (int) $trainer['email_verified'] === 0) {
+                    $errors[] = 'Please verify your email before logging in.';
+                } else {
+                    session_regenerate_id(true);
+                    unset($_SESSION['admin_id'], $_SESSION['admin_name'], $_SESSION['admin_role']);
+                    unset($_SESSION['member_id'], $_SESSION['member_name']);
+                    $_SESSION['trainer_id']   = $trainer['trainer_id'];
+                    $_SESSION['trainer_name'] = $trainer['full_name'];
+                    header('Location: ' . BASE_URL . '/trainer/index.php');
+                    exit;
+                }
+            }
+        }
+
+        // Then member
+        if (empty($errors)) {
+            $stmt = $pdo->prepare(
+                'SELECT member_id, full_name, password_hash, status, email_verified
+                 FROM members WHERE email = ? LIMIT 1'
             );
             $stmt->execute([$email]);
             $member = $stmt->fetch();
@@ -110,20 +100,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ) {
                 if (($member['status'] ?? 'active') !== 'active') {
                     $errors[] = 'Your account is not active. Contact the gym.';
+                } elseif (isset($member['email_verified']) && (int) $member['email_verified'] === 0) {
+                    $errors[] = 'Please verify your email before logging in.';
                 } else {
                     session_regenerate_id(true);
-
-                    unset(
-                        $_SESSION['admin_id'],
-                        $_SESSION['admin_name'],
-                        $_SESSION['admin_role'],
-                        $_SESSION['trainer_id'],
-                        $_SESSION['trainer_name']
-                    );
-
                     $_SESSION['member_id']   = $member['member_id'];
                     $_SESSION['member_name'] = $member['full_name'];
-
                     header('Location: ' . BASE_URL . '/user/index.php');
                     exit;
                 }
@@ -204,7 +186,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="mb-4">
             <div class="d-flex justify-content-between align-items-center mb-1">
                 <label class="form-label mb-0">Password</label>
-                <a href="<?= BASE_URL ?>/forgot-password.php" class="small text-muted text-decoration-none">Forgot password?</a>
+                <a href="<?= BASE_URL ?>/forgot-password.php" class="small text-muted">Forgot password?</a>
             </div>
             <div class="input-icon">
                 <i class="bi bi-lock"></i>
