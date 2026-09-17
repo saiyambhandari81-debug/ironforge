@@ -43,91 +43,91 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'SELECT admin_id, full_name, role, password_hash, status, email_verified
                  FROM admins WHERE email = ? LIMIT 1'
             );
-        $stmt->execute([$email]);
-        $admin = $stmt->fetch();
-
-        if (
-            $admin
-            && ($admin['status'] ?? 'active') === 'active'
-            && password_verify($password, $admin['password_hash'])
-        ) {
-            // Admins: allow if verified or column missing treated as ok (default 1)
-            if (isset($admin['email_verified']) && (int) $admin['email_verified'] === 0) {
-                $errors[] = 'Please verify your email before logging in.';
-                $unverifiedEmail = $email;
-            } else {
-                session_regenerate_id(true);
-                $_SESSION['admin_id']   = $admin['admin_id'];
-                $_SESSION['admin_name'] = $admin['full_name'];
-                $_SESSION['admin_role'] = $admin['role'];
-                header('Location: ' . BASE_URL . '/admin/dashboard.php');
-                exit;
-            }
-        }
-
-        // Try trainer next
-        if (empty($errors)) {
-            $stmt = $pdo->prepare(
-                'SELECT trainer_id, full_name, password_hash, status, email_verified
-                 FROM trainers WHERE email = ? LIMIT 1'
-            );
             $stmt->execute([$email]);
-            $trainer = $stmt->fetch();
+            $admin = $stmt->fetch();
 
             if (
-                $trainer
-                && !empty($trainer['password_hash'])
-                && password_verify($password, $trainer['password_hash'])
+                $admin
+                && ($admin['status'] ?? 'active') === 'active'
+                && password_verify($password, $admin['password_hash'])
             ) {
-                if (($trainer['status'] ?? 'active') === 'inactive') {
-                    $errors[] = 'Your account is not active. Contact the gym.';
-                } elseif (isset($trainer['email_verified']) && (int) $trainer['email_verified'] === 0) {
+                // Admins: allow if verified or column missing treated as ok (default 1)
+                if (isset($admin['email_verified']) && (int) $admin['email_verified'] === 0) {
                     $errors[] = 'Please verify your email before logging in.';
                     $unverifiedEmail = $email;
                 } else {
                     session_regenerate_id(true);
-                    unset($_SESSION['admin_id'], $_SESSION['admin_name'], $_SESSION['admin_role']);
-                    unset($_SESSION['member_id'], $_SESSION['member_name']);
-                    $_SESSION['trainer_id']   = $trainer['trainer_id'];
-                    $_SESSION['trainer_name'] = $trainer['full_name'];
-                    header('Location: ' . BASE_URL . '/trainer/index.php');
+                    $_SESSION['admin_id']   = $admin['admin_id'];
+                    $_SESSION['admin_name'] = $admin['full_name'];
+                    $_SESSION['admin_role'] = $admin['role'];
+                    header('Location: ' . BASE_URL . '/admin/dashboard.php');
                     exit;
                 }
             }
-        }
 
-        // Then member
-        if (empty($errors)) {
-            $stmt = $pdo->prepare(
-                'SELECT member_id, full_name, password_hash, status, email_verified
-                 FROM members WHERE email = ? LIMIT 1'
-            );
-            $stmt->execute([$email]);
-            $member = $stmt->fetch();
+            // Try trainer next
+            if (empty($errors)) {
+                $stmt = $pdo->prepare(
+                    'SELECT trainer_id, full_name, password_hash, status, email_verified
+                     FROM trainers WHERE email = ? LIMIT 1'
+                );
+                $stmt->execute([$email]);
+                $trainer = $stmt->fetch();
 
-            if (
-                $member
-                && !empty($member['password_hash'])
-                && password_verify($password, $member['password_hash'])
-            ) {
-                if (($member['status'] ?? 'active') !== 'active') {
-                    $errors[] = 'Your account is not active. Contact the gym.';
-                } elseif (isset($member['email_verified']) && (int) $member['email_verified'] === 0) {
-                    $errors[] = 'Please verify your email before logging in.';
-                    $unverifiedEmail = $email;
-                } else {
-                    session_regenerate_id(true);
-                    $_SESSION['member_id']   = $member['member_id'];
-                    $_SESSION['member_name'] = $member['full_name'];
-                    header('Location: ' . BASE_URL . '/user/index.php');
-                    exit;
+                if (
+                    $trainer
+                    && !empty($trainer['password_hash'])
+                    && password_verify($password, $trainer['password_hash'])
+                ) {
+                    if (($trainer['status'] ?? 'active') === 'inactive') {
+                        $errors[] = 'Your account is not active. Contact the gym.';
+                    } elseif (isset($trainer['email_verified']) && (int) $trainer['email_verified'] === 0) {
+                        $errors[] = 'Please verify your email before logging in.';
+                        $unverifiedEmail = $email;
+                    } else {
+                        session_regenerate_id(true);
+                        unset($_SESSION['admin_id'], $_SESSION['admin_name'], $_SESSION['admin_role']);
+                        unset($_SESSION['member_id'], $_SESSION['member_name']);
+                        $_SESSION['trainer_id']   = $trainer['trainer_id'];
+                        $_SESSION['trainer_name'] = $trainer['full_name'];
+                        header('Location: ' . BASE_URL . '/trainer/index.php');
+                        exit;
+                    }
                 }
-            } else {
-                $errors[] = 'Invalid email or password.';
+            }
+
+            // Then member
+            if (empty($errors)) {
+                $stmt = $pdo->prepare(
+                    'SELECT member_id, full_name, password_hash, status, email_verified
+                     FROM members WHERE email = ? LIMIT 1'
+                );
+                $stmt->execute([$email]);
+                $member = $stmt->fetch();
+
+                if (
+                    $member
+                    && !empty($member['password_hash'])
+                    && password_verify($password, $member['password_hash'])
+                ) {
+                    if (($member['status'] ?? 'active') !== 'active') {
+                        $errors[] = 'Your account is not active. Contact the gym.';
+                    } elseif (isset($member['email_verified']) && (int) $member['email_verified'] === 0) {
+                        $errors[] = 'Please verify your email before logging in.';
+                        $unverifiedEmail = $email;
+                    } else {
+                        session_regenerate_id(true);
+                        $_SESSION['member_id']   = $member['member_id'];
+                        $_SESSION['member_name'] = $member['full_name'];
+                        header('Location: ' . BASE_URL . '/user/index.php');
+                        exit;
+                    }
+                } else {
+                    $errors[] = 'Invalid email or password.';
+                }
             }
         }
     }
-}
 }
 ?>
 <!DOCTYPE html>
