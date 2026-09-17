@@ -221,6 +221,8 @@ require_once ROOT_PATH . '/includes/header.php';
                     <label class="form-label">Confirm password *</label>
                     <input type="password" name="confirm_password" class="form-control" required minlength="6">
                 </div>
+            </div>
+
             <div class="form-check mb-3">
                 <input class="form-check-input" type="checkbox" name="email_verified" id="email_verified" value="1" <?= !empty($_POST['email_verified']) ? 'checked' : '' ?>>
                 <label class="form-check-label" for="email_verified">

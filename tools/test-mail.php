@@ -4,7 +4,9 @@ require_once ROOT_PATH . '/includes/mailer.php';
 
 header('Content-Type: text/html; charset=utf-8');
 
-if (!isLocalHost()) {
+$remoteAddr = trim((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
+$isCli = (php_sapi_name() === 'cli');
+if ((!isLocalHost() || !in_array($remoteAddr, ['127.0.0.1', '::1'], true)) && !$isCli) {
     http_response_code(403);
     echo 'Mail test is only allowed on localhost.';
     exit;

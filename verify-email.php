@@ -14,7 +14,7 @@ $demoOtp = '';
 if (isLocalHost() && !empty($_SESSION['demo_otp'])) {
     $demoOtp = (string) $_SESSION['demo_otp'];
 }
-unset($_SESSION['flash_success'], $_SESSION['demo_otp']);
+unset($_SESSION['flash_success']);
 
 $email = trim((string) ($_GET['email'] ?? ''));
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -40,6 +40,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['resend_code'])) {
             $t = $tStmt->fetch();
             if ($t && (int) $t['email_verified'] === 0) {
                 $userFound = true;
+            } else {
+                $aStmt = $pdo->prepare('SELECT admin_id, email_verified FROM admins WHERE email = ? LIMIT 1');
+                $aStmt->execute([$email]);
+                $a = $aStmt->fetch();
+                if ($a && (int) $a['email_verified'] === 0) {
+                    $userFound = true;
+                }
             }
         }
 
@@ -74,9 +81,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['resend_code'])) {
                     . "If you did not create an account, you can ignore this email.\n";
 
                 $mail = sendGymEmail($email, 'IronForge email verification code', $body);
-                $_SESSION['flash_success'] = 'A new verification code has been sent to your email.';
+                $_SESSION['flash_success'] = 'A new verification code has been sent to your email. Check your Inbox and Spam.';
                 if (!$mail['ok'] && isLocalHost()) {
                     $_SESSION['demo_otp'] = $otp;
+                } else {
+                    unset($_SESSION['demo_otp']);
                 }
 
                 header('Location: ' . BASE_URL . '/verify-email.php?email=' . urlencode($email));
@@ -116,12 +125,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['resend_code'])) {
             if ($trainer) {
                 $userType = 'trainer';
                 $isVerified = (int) $trainer['email_verified'];
+            } else {
+                $adminStmt = $pdo->prepare(
+                    'SELECT admin_id, email_verified FROM admins WHERE email = ? LIMIT 1'
+                );
+                $adminStmt->execute([$email]);
+                $admin = $adminStmt->fetch();
+                if ($admin) {
+                    $userType = 'admin';
+                    $isVerified = (int) $admin['email_verified'];
+                }
             }
         }
 
         if (!$userType) {
             $errors[] = 'No account found for that email.';
         } elseif ($isVerified === 1) {
+            unset($_SESSION['demo_otp']);
             $_SESSION['flash_success'] = 'Email already verified. You can log in.';
             header('Location: ' . BASE_URL . '/login.php');
             exit;
@@ -166,6 +186,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['resend_code'])) {
                     } elseif ($userType === 'trainer') {
                         $pdo->prepare('UPDATE trainers SET email_verified = 1 WHERE email = ? AND email_verified = 0')
                             ->execute([$email]);
+                    } elseif ($userType === 'admin') {
+                        $pdo->prepare('UPDATE admins SET email_verified = 1 WHERE email = ? AND email_verified = 0')
+                            ->execute([$email]);
                     }
 
                     $pdo->prepare('UPDATE email_otps SET used_at = NOW() WHERE id = ?')
@@ -180,6 +203,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['resend_code'])) {
                 }
 
                 if (!$errors) {
+                    unset($_SESSION['demo_otp']);
                     $_SESSION['flash_success'] = 'Email verified successfully. You can now log in.';
                     header('Location: ' . BASE_URL . '/login.php');
                     exit;
@@ -231,7 +255,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['resend_code'])) {
             <span class="fw-bold fs-4 text-dark">IronForge</span>
         </a>
         <h1 class="h5 fw-bold mb-1">Verify your email</h1>
-        <p class="text-muted small mb-0">Enter the 6-digit code we sent you. <strong>Check your Inbox and Spam</strong>.</p>
+        <p class="text-muted small mb-0">Use an email inbox you can open. You cannot log in until verified. Enter the 6-digit code we sent you (check Inbox and Spam).</p>
     </div>
 
     <?php if ($success): ?>
@@ -263,13 +287,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['resend_code'])) {
         </div>
     <?php endif; ?>
 
-    <form method="POST">
+    <form method="POST" id="verifyForm">
         <?= csrfField() ?>
         <div class="mb-3">
             <label class="form-label">Email address</label>
             <div class="input-icon">
                 <i class="bi bi-envelope"></i>
-                <input type="email" name="email" class="form-control"
+                <input type="email" name="email" id="emailInput" class="form-control"
                        placeholder="name@example.com"
                        value="<?= htmlspecialchars($email) ?>" required>
             </div>
@@ -290,10 +314,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['resend_code'])) {
 
     <div class="d-flex justify-content-between align-items-center mt-3 pt-2 small text-muted">
         <span>Didn't receive a code?</span>
-        <form method="POST" class="d-inline">
+        <form method="POST" class="d-inline" id="resendForm">
             <?= csrfField() ?>
-            <input type="hidden" name="email" value="<?= htmlspecialchars($email) ?>">
-            <button type="submit" name="resend_code" value="1" class="btn btn-link p-0 small text-decoration-none fw-semibold text-dark">
+            <input type="hidden" name="email" id="resendEmail" value="<?= htmlspecialchars($email) ?>">
+            <button type="submit" name="resend_code" value="1" class="btn btn-link p-0 small text-decoration-none fw-semibold text-dark" onclick="var em=document.getElementById('emailInput'); if(em && em.value) document.getElementById('resendEmail').value=em.value;">
                 Resend code
             </button>
         </form>

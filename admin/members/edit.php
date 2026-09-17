@@ -213,13 +213,13 @@ require_once ROOT_PATH . '/includes/header.php';
                     <label class="form-label">Email *</label>
                     <input type="email" name="email" class="form-control" value="<?= htmlspecialchars($old['email']) ?>" required>
                     <div class="form-check mt-2">
-                        <input class="form-check-input" type="checkbox" name="email_verified" id="email_verified" value="1" <?= (!empty($_POST) ? !empty($_POST['email_verified']) : !empty($member['email_verified'])) ? 'checked' : '' ?>>
+                        <input class="form-check-input" type="checkbox" name="email_verified" id="email_verified" value="1" <?= (($_SERVER['REQUEST_METHOD'] === 'POST') ? !empty($_POST['email_verified']) : (int) ($member['email_verified'] ?? 0) === 1) ? 'checked' : '' ?>>
                         <label class="form-check-label small" for="email_verified">
                             Mark email as verified
                         </label>
                     </div>
                     <div class="form-text text-muted mt-1">
-                        Current status: <span class="fw-semibold <?= !empty($member['email_verified']) ? 'text-success' : 'text-danger' ?>"><?= !empty($member['email_verified']) ? 'Verified' : 'Unverified' ?></span>
+                        Current status: <span class="fw-semibold <?= (int) ($member['email_verified'] ?? 0) === 1 ? 'text-success' : 'text-danger' ?>"><?= (int) ($member['email_verified'] ?? 0) === 1 ? 'Verified' : 'Unverified' ?></span>
                     </div>
                 </div>
                 <div class="col-md-6 mb-3">

@@ -88,8 +88,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ")->execute([$email]);
 
             $pdo->prepare("
-                INSERT INTO email_otps (email, purpose, otp_hash, expires_at)
-                VALUES (?, 'register', ?, DATE_ADD(NOW(), INTERVAL 15 MINUTE))
+                INSERT INTO email_otps (email, purpose, otp_hash, expires_at, attempts)
+                VALUES (?, 'register', ?, DATE_ADD(NOW(), INTERVAL 15 MINUTE), 0)
             ")->execute([$email, $otpHash]);
 
             $pdo->commit();
@@ -111,6 +111,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['flash_success'] = 'Use an email inbox you can open. We sent a 6-digit code. You cannot log in until you verify.';
             if (!$mail['ok'] && isLocalHost()) {
                 $_SESSION['demo_otp'] = $otp;
+            } else {
+                unset($_SESSION['demo_otp']);
             }
 
             header('Location: ' . BASE_URL . '/verify-email.php?email=' . urlencode($email));
@@ -161,7 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <span class="fw-bold fs-4 text-dark">IronForge</span>
         </a>
         <h1 class="h5 fw-bold mb-1">Join IronForge Gym</h1>
-        <p class="text-muted small mb-0">Create your free member account today</p>
+        <p class="text-muted small mb-0">Use an email inbox you can open. You cannot log in until verified.</p>
     </div>
 
     <?php if ($errors): ?>

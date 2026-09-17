@@ -30,12 +30,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($email === '' || $password === '') {
         $errors[] = 'Email and password are required.';
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL) || strpos($email, ' ') !== false) {
+        $errors[] = 'Please enter a valid email address.';
     } else {
-        // Try admin first
-        $stmt = $pdo->prepare(
-            'SELECT admin_id, full_name, role, password_hash, status, email_verified
-             FROM admins WHERE email = ? LIMIT 1'
-        );
+        $emailParts = explode('@', $email);
+        $domain = strtolower($emailParts[1] ?? '');
+        if ($domain === '' || strpos($domain, '.') === false) {
+            $errors[] = 'Please enter a valid email address.';
+        } else {
+            // Try admin first
+            $stmt = $pdo->prepare(
+                'SELECT admin_id, full_name, role, password_hash, status, email_verified
+                 FROM admins WHERE email = ? LIMIT 1'
+            );
         $stmt->execute([$email]);
         $admin = $stmt->fetch();
 
@@ -120,6 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     }
+}
 }
 ?>
 <!DOCTYPE html>
