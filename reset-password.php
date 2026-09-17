@@ -2,94 +2,120 @@
 require_once __DIR__ . '/config/database.php';
 require_once ROOT_PATH . '/includes/auth.php';
 
-$errors = [];
-$success = '';
-$token = trim($_GET['token'] ?? $_POST['token'] ?? '');
-$valid = false;
-$resetRow = null;
+if (!empty($_SESSION['admin_id'])) {
+    header('Location: ' . BASE_URL . '/admin/dashboard.php');
+    exit;
+}
+if (!empty($_SESSION['trainer_id'])) {
+    header('Location: ' . BASE_URL . '/trainer/index.php');
+    exit;
+}
+if (!empty($_SESSION['member_id'])) {
+    header('Location: ' . BASE_URL . '/user/index.php');
+    exit;
+}
 
-if ($token === '' || strlen($token) < 32) {
-    $errors[] = 'Invalid or missing reset link.';
+if (empty($_SESSION['password_reset_ok'])) {
+    header('Location: ' . BASE_URL . '/forgot-password.php');
+    exit;
+}
+
+$resetAuth = $_SESSION['password_reset_ok'];
+$email = (string) ($resetAuth['email'] ?? $resetAuth[0] ?? '');
+$userType = (string) ($resetAuth['user_type'] ?? $resetAuth[1] ?? '');
+$otpId = (int) ($resetAuth['otp_id'] ?? $resetAuth[2] ?? 0);
+
+$errors = [];
+$isValid = false;
+
+if ($email === '' || !in_array($userType, ['admin', 'trainer', 'member'], true) || $otpId <= 0) {
+    unset($_SESSION['password_reset_ok']);
+    $errors[] = 'Invalid password reset session. Please start again.';
 } else {
-    $tokenHash = hash('sha256', $token);
-    $stmt = $pdo->prepare(
-        "SELECT * FROM password_resets
-         WHERE token_hash = ? AND used_at IS NULL AND expires_at > NOW()
-         LIMIT 1"
-    );
-    $stmt->execute([$tokenHash]);
-    $resetRow = $stmt->fetch();
-    if (!$resetRow) {
-        $errors[] = 'This reset link is invalid or has expired.';
+    // Ensure OTP has not been marked used or expired
+    $checkStmt = $pdo->prepare("
+        SELECT id FROM email_otps
+        WHERE id = ?
+          AND email = ?
+          AND purpose = 'reset'
+          AND used_at IS NULL
+          AND expires_at > NOW()
+        LIMIT 1
+    ");
+    $checkStmt->execute([$otpId, $email]);
+    if (!$checkStmt->fetch()) {
+        unset($_SESSION['password_reset_ok']);
+        $errors[] = 'Your password reset session has expired. Please request a new code.';
     } else {
-        $valid = true;
+        $isValid = true;
     }
 }
 
-if ($valid && $_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($isValid && $_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCsrf();
-    $token = trim($_POST['token'] ?? '');
-    $new = (string) ($_POST['new_password'] ?? '');
-    $confirm = (string) ($_POST['confirm_password'] ?? '');
 
-    if (strlen($new) < 8) {
+    $newPassword = (string) ($_POST['new_password'] ?? '');
+    $confirmPassword = (string) ($_POST['confirm_password'] ?? '');
+
+    if (strlen($newPassword) < 8) {
         $errors[] = 'Password must be at least 8 characters.';
     }
-    if ($new !== $confirm) {
-        $errors[] = 'New password and confirmation must match.';
-    }
-    if ($new !== '' && !preg_match('/[A-Za-z]/', $new)) {
+    if (!preg_match('/[A-Za-z]/', $newPassword)) {
         $errors[] = 'Password must include at least one letter.';
     }
-    if ($new !== '' && !preg_match('/[0-9]/', $new)) {
+    if (!preg_match('/[0-9]/', $newPassword)) {
         $errors[] = 'Password must include at least one number.';
     }
+    if ($newPassword !== $confirmPassword) {
+        $errors[] = 'New password and confirmation do not match.';
+    }
 
-    if (!$errors) {
-        $hash = password_hash($new, PASSWORD_DEFAULT);
-        $email = $resetRow['email'];
-        $type = $resetRow['user_type'];
+    if (empty($errors)) {
+        $hash = password_hash($newPassword, PASSWORD_DEFAULT);
 
         try {
             $pdo->beginTransaction();
 
-            $lock = $pdo->prepare(
-                "SELECT id FROM password_resets
-                 WHERE id = ? AND used_at IS NULL AND expires_at > NOW()
-                 FOR UPDATE"
-            );
-            $lock->execute([(int) $resetRow['id']]);
-            if (!$lock->fetch()) {
-                $pdo->rollBack();
-                $valid = false;
-                $errors[] = 'This reset link is invalid or has expired.';
-            } else {
-                if ($type === 'admin') {
-                    $pdo->prepare('UPDATE admins SET password_hash = ? WHERE email = ?')->execute([$hash, $email]);
-                } elseif ($type === 'trainer') {
-                    $pdo->prepare('UPDATE trainers SET password_hash = ? WHERE email = ?')->execute([$hash, $email]);
-                } elseif ($type === 'member') {
-                    $pdo->prepare('UPDATE members SET password_hash = ? WHERE email = ?')->execute([$hash, $email]);
-                } else {
-                    $pdo->rollBack();
-                    $errors[] = 'This reset link is invalid or has expired.';
-                    $valid = false;
-                }
-
-                if (!$errors) {
-                    $pdo->prepare(
-                        'UPDATE password_resets SET used_at = NOW() WHERE email = ? AND used_at IS NULL'
-                    )->execute([$email]);
-
-                    $pdo->commit();
-                    $success = 'Password updated. You can log in now.';
-                    $valid = false;
-                }
+            if ($userType === 'admin') {
+                $stmt = $pdo->prepare('UPDATE admins SET password_hash = ? WHERE email = ?');
+                $stmt->execute([$hash, $email]);
+            } elseif ($userType === 'trainer') {
+                $stmt = $pdo->prepare('UPDATE trainers SET password_hash = ? WHERE email = ?');
+                $stmt->execute([$hash, $email]);
+            } elseif ($userType === 'member') {
+                $stmt = $pdo->prepare('UPDATE members SET password_hash = ? WHERE email = ?');
+                $stmt->execute([$hash, $email]);
             }
+
+            // Mark OTP used and invalidate other reset OTPs for this email
+            $pdo->prepare("
+                UPDATE email_otps
+                SET used_at = NOW()
+                WHERE email = ?
+                  AND purpose = 'reset'
+                  AND used_at IS NULL
+            ")->execute([$email]);
+
+            // Invalidate legacy password_resets if table exists
+            try {
+                $pdo->prepare(
+                    'UPDATE password_resets SET used_at = NOW() WHERE email = ? AND used_at IS NULL'
+                )->execute([$email]);
+            } catch (PDOException $e) {
+                // Ignore if table missing
+            }
+
+            $pdo->commit();
+
+            unset($_SESSION['password_reset_ok']);
+            $_SESSION['flash_success'] = 'Password updated successfully. You can log in now.';
+            header('Location: ' . BASE_URL . '/login.php');
+            exit;
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
+            error_log('Reset password failed: ' . $e->getMessage());
             $errors[] = 'Could not update password. Please try again.';
         }
     }
@@ -100,46 +126,91 @@ if ($valid && $_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reset password - IronForge Gym</title>
+    <title>Set new password - IronForge Gym</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="<?= BASE_URL ?>/assets/css/style.css" rel="stylesheet">
+    <style>
+        body {
+            min-height: 100vh;
+            background-color: var(--bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        .auth-card {
+            width: 100%;
+            max-width: 420px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-md);
+            padding: 36px 32px;
+        }
+    </style>
 </head>
-<body class="bg-light d-flex align-items-center min-vh-100">
-<div class="container" style="max-width: 420px;">
-    <div class="card shadow-sm">
-        <div class="card-body p-4">
-            <h1 class="h5 fw-bold mb-3">Set new password</h1>
+<body>
+<div class="auth-card">
+    <div class="text-center mb-4">
+        <a href="<?= BASE_URL ?>/" class="d-inline-flex align-items-center gap-2 text-decoration-none text-dark mb-2">
+            <div class="sidebar-brand p-0" style="height:auto;border:none;">
+                <div class="mark" style="width:36px;height:36px;font-size:1.1rem;">IF</div>
+            </div>
+            <span class="fw-bold fs-4 text-dark">IronForge</span>
+        </a>
+        <h1 class="h5 fw-bold mb-1">Set new password</h1>
+        <p class="text-muted small mb-0">Enter a secure new password for <strong><?= htmlspecialchars($email) ?></strong></p>
+    </div>
 
-            <?php if ($errors): ?>
-                <div class="alert alert-danger">
-                    <?php foreach ($errors as $e): ?>
-                        <div><?= htmlspecialchars($e) ?></div>
-                    <?php endforeach; ?>
+    <?php if ($errors): ?>
+        <div class="alert alert-danger mb-4">
+            <?php foreach ($errors as $e): ?>
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-exclamation-circle-fill"></i>
+                    <span><?= htmlspecialchars($e) ?></span>
                 </div>
-            <?php endif; ?>
-
-            <?php if ($success): ?>
-                <div class="alert alert-success"><?= htmlspecialchars($success) ?></div>
-                <a href="<?= BASE_URL ?>/login.php" class="btn btn-dark w-100">Go to login</a>
-            <?php elseif ($valid): ?>
-                <form method="POST">
-                    <?= csrfField() ?>
-                    <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
-                    <div class="mb-3">
-                        <label class="form-label">New password *</label>
-                        <input type="password" name="new_password" class="form-control" required minlength="8">
-                        <div class="form-text">At least 8 characters, including a letter and a number.</div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Confirm password *</label>
-                        <input type="password" name="confirm_password" class="form-control" required minlength="8">
-                    </div>
-                    <button type="submit" class="btn btn-dark w-100">Save password</button>
-                </form>
-            <?php else: ?>
-                <a href="<?= BASE_URL ?>/forgot-password.php" class="btn btn-outline-dark w-100">Request new link</a>
-            <?php endif; ?>
+            <?php endforeach; ?>
         </div>
+    <?php endif; ?>
+
+    <?php if ($isValid): ?>
+        <form method="POST">
+            <?= csrfField() ?>
+            <div class="mb-3">
+                <label class="form-label">New password</label>
+                <div class="input-icon">
+                    <i class="bi bi-lock"></i>
+                    <input type="password" name="new_password" class="form-control"
+                           placeholder="••••••••" required minlength="8" autofocus>
+                </div>
+                <div class="form-text">At least 8 characters, with at least one letter and one number.</div>
+            </div>
+            <div class="mb-4">
+                <label class="form-label">Confirm password</label>
+                <div class="input-icon">
+                    <i class="bi bi-lock-fill"></i>
+                    <input type="password" name="confirm_password" class="form-control"
+                           placeholder="••••••••" required minlength="8">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-dark btn-lg w-100 fw-semibold">
+                <i class="bi bi-check2-circle me-1"></i> Save new password
+            </button>
+        </form>
+    <?php else: ?>
+        <div class="text-center mt-3">
+            <a href="<?= BASE_URL ?>/forgot-password.php" class="btn btn-dark w-100">
+                Request new verification code
+            </a>
+        </div>
+    <?php endif; ?>
+
+    <div class="text-center mt-4 pt-3 border-top small text-muted">
+        <a href="<?= BASE_URL ?>/login.php" class="text-muted text-decoration-none">Back to login</a>
     </div>
 </div>
 </body>
