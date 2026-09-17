@@ -44,7 +44,13 @@ require_once ROOT_PATH . '/includes/header.php';
                     <span class="badge bg-<?= $member['status'] === 'active' ? 'success' : 'secondary' ?>"><?= ucfirst($member['status']) ?></span>
                 </h5>
                 <dl class="row mt-3 mb-0">
-                    <dt class="col-sm-4">Email</dt><dd class="col-sm-8"><?= htmlspecialchars($member['email']) ?></dd>
+                    <dt class="col-sm-4">Email</dt>
+                    <dd class="col-sm-8">
+                        <?= htmlspecialchars($member['email']) ?>
+                        <span class="badge ms-2 bg-<?= !empty($member['email_verified']) ? 'success' : 'warning text-dark' ?>">
+                            <?= !empty($member['email_verified']) ? 'Email Verified' : 'Unverified' ?>
+                        </span>
+                    </dd>
                     <dt class="col-sm-4">Phone</dt><dd class="col-sm-8"><?= htmlspecialchars($member['phone']) ?></dd>
                     <dt class="col-sm-4">Address</dt><dd class="col-sm-8"><?= htmlspecialchars($member['address'] ?: '-') ?></dd>
                     <dt class="col-sm-4">Date of Birth</dt><dd class="col-sm-8"><?= $member['date_of_birth'] ? formatDate($member['date_of_birth']) : '-' ?></dd>

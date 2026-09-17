@@ -31,12 +31,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($old['email'] === '' || !filter_var($old['email'], FILTER_VALIDATE_EMAIL)) {
-        $errors[] = 'Please enter a valid email.';
+        $errors[] = 'Please enter a valid email address.';
+    } elseif (strpos($old['email'], ' ') !== false) {
+        $errors[] = 'Email address cannot contain spaces.';
     } else {
-        $check = $pdo->prepare('SELECT member_id FROM members WHERE email = ? LIMIT 1');
-        $check->execute([$old['email']]);
-        if ($check->fetch()) {
-            $errors[] = 'This email is already registered.';
+        $emailParts = explode('@', $old['email']);
+        $domain = strtolower($emailParts[1] ?? '');
+        if ($domain === '' || strpos($domain, '.') === false) {
+            $errors[] = 'Please enter a valid email domain.';
+        } else {
+            $check = $pdo->prepare('SELECT member_id FROM members WHERE email = ? LIMIT 1');
+            $check->execute([$old['email']]);
+            if ($check->fetch()) {
+                $errors[] = 'This email is already registered.';
+            }
         }
     }
 
@@ -56,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$errors) {
         $hash = password_hash($password, PASSWORD_DEFAULT);
         $email = $old['email'];
-        $otp = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        $otp = (string) random_int(100000, 999999);
         $otpHash = hash('sha256', $otp);
 
         $pdo->beginTransaction();
@@ -100,7 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $mail = sendGymEmail($email, 'IronForge email verification code', $body);
 
-            $_SESSION['flash_success'] = 'We sent a verification code to your email.';
+            $_SESSION['flash_success'] = 'Use an email inbox you can open. We sent a 6-digit code. You cannot log in until you verify.';
             if (!$mail['ok'] && isLocalHost()) {
                 $_SESSION['demo_otp'] = $otp;
             }
@@ -186,6 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                        placeholder="name@example.com"
                        value="<?= htmlspecialchars($old['email']) ?>" required>
             </div>
+            <div class="form-text">Use an email inbox you can open. We will send a 6-digit code. You cannot log in until verified.</div>
         </div>
         <div class="mb-3">
             <label class="form-label">Phone number *</label>

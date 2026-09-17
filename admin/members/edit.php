@@ -54,15 +54,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // Email
-    if ($old['email'] === '') {
-        $errors[] = 'Email is required.';
-    } elseif (!filter_var($old['email'], FILTER_VALIDATE_EMAIL)) {
+    if ($old['email'] === '' || !filter_var($old['email'], FILTER_VALIDATE_EMAIL)) {
         $errors[] = 'Please enter a valid email address.';
+    } elseif (strpos($old['email'], ' ') !== false) {
+        $errors[] = 'Email address cannot contain spaces.';
     } else {
-        $check = $pdo->prepare("SELECT COUNT(*) FROM members WHERE email = ? AND member_id != ?");
-        $check->execute([$old['email'], $id]);
-        if ($check->fetchColumn() > 0) {
-            $errors[] = 'A member with that email already exists.';
+        $emailParts = explode('@', $old['email']);
+        $domain = strtolower($emailParts[1] ?? '');
+        if ($domain === '' || strpos($domain, '.') === false) {
+            $errors[] = 'Please enter a valid email domain.';
+        } else {
+            $check = $pdo->prepare("SELECT COUNT(*) FROM members WHERE email = ? AND member_id != ?");
+            $check->execute([$old['email'], $id]);
+            if ($check->fetchColumn() > 0) {
+                $errors[] = 'A member with that email already exists.';
+            }
         }
     }
 
@@ -131,12 +137,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (!$errors) {
+        $emailVerified = !empty($_POST['email_verified']) ? 1 : 0;
         if ($password !== '') {
             $hash = password_hash($password, PASSWORD_DEFAULT);
             $update = $pdo->prepare(
                 "UPDATE members SET
                     full_name = ?, email = ?, phone = ?, address = ?,
-                    date_of_birth = ?, gender = ?, join_date = ?, password_hash = ?
+                    date_of_birth = ?, gender = ?, join_date = ?, password_hash = ?, email_verified = ?
                  WHERE member_id = ?"
             );
             $update->execute([
@@ -148,13 +155,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $old['gender'] !== '' ? $old['gender'] : null,
                 $old['join_date'],
                 $hash,
+                $emailVerified,
                 $id,
             ]);
         } else {
             $update = $pdo->prepare(
                 "UPDATE members SET
                     full_name = ?, email = ?, phone = ?, address = ?,
-                    date_of_birth = ?, gender = ?, join_date = ?
+                    date_of_birth = ?, gender = ?, join_date = ?, email_verified = ?
                  WHERE member_id = ?"
             );
             $update->execute([
@@ -165,6 +173,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $old['date_of_birth'] !== '' ? $old['date_of_birth'] : null,
                 $old['gender'] !== '' ? $old['gender'] : null,
                 $old['join_date'],
+                $emailVerified,
                 $id,
             ]);
         }
@@ -203,6 +212,15 @@ require_once ROOT_PATH . '/includes/header.php';
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Email *</label>
                     <input type="email" name="email" class="form-control" value="<?= htmlspecialchars($old['email']) ?>" required>
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" name="email_verified" id="email_verified" value="1" <?= (!empty($_POST) ? !empty($_POST['email_verified']) : !empty($member['email_verified'])) ? 'checked' : '' ?>>
+                        <label class="form-check-label small" for="email_verified">
+                            Mark email as verified
+                        </label>
+                    </div>
+                    <div class="form-text text-muted mt-1">
+                        Current status: <span class="fw-semibold <?= !empty($member['email_verified']) ? 'text-success' : 'text-danger' ?>"><?= !empty($member['email_verified']) ? 'Verified' : 'Unverified' ?></span>
+                    </div>
                 </div>
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Phone *</label>

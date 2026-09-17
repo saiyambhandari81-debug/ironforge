@@ -12,7 +12,9 @@ function isLocalHost(): bool
 {
     $host = strtolower(trim((string) ($_SERVER['HTTP_HOST'] ?? '')));
     $hostname = preg_replace('/:\d+$/', '', $host);
-    return in_array($hostname, ['localhost', '127.0.0.1', '::1'], true);
+    $remote = trim((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
+    return in_array($hostname, ['localhost', '127.0.0.1', '::1'], true)
+        || in_array($remote, ['127.0.0.1', '::1'], true);
 }
 
 /**

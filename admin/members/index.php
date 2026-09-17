@@ -3,10 +3,11 @@ require_once __DIR__ . '/../../config/database.php';
 require_once ROOT_PATH . '/includes/auth.php';
 requireLogin();
 
-$search       = trim($_GET['search'] ?? '');
-$statusFilter = $_GET['status'] ?? '';
-$perPage      = 10;
-$page         = max(1, (int) ($_GET['page'] ?? 1));
+$search         = trim($_GET['search'] ?? '');
+$statusFilter   = $_GET['status'] ?? '';
+$verifiedFilter = $_GET['verified'] ?? '';
+$perPage        = 10;
+$page           = max(1, (int) ($_GET['page'] ?? 1));
 
 $where  = "WHERE 1=1";
 $params = [];
@@ -22,6 +23,11 @@ if ($search !== '') {
 if ($statusFilter === 'active' || $statusFilter === 'inactive') {
     $where .= " AND status = ?";
     $params[] = $statusFilter;
+}
+
+if ($verifiedFilter === '1' || $verifiedFilter === '0') {
+    $where .= " AND email_verified = ?";
+    $params[] = (int) $verifiedFilter;
 }
 
 $countStmt = $pdo->prepare("SELECT COUNT(*) FROM members $where");
@@ -59,19 +65,24 @@ require_once ROOT_PATH . '/includes/header.php';
 
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <form method="GET" class="d-flex flex-wrap gap-2 align-items-center">
-        <div class="input-group" style="width: auto; min-width: 260px;">
+        <div class="input-group" style="width: auto; min-width: 240px;">
             <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
-            <input type="text" name="search" class="form-control" placeholder="Search by name, email, phone" value="<?= htmlspecialchars($search) ?>">
+            <input type="text" name="search" class="form-control" placeholder="Search name, email, phone" value="<?= htmlspecialchars($search) ?>">
         </div>
         <select name="status" class="form-select" style="width: auto;">
             <option value="">All Statuses</option>
             <option value="active" <?= $statusFilter === 'active' ? 'selected' : '' ?>>Active</option>
             <option value="inactive" <?= $statusFilter === 'inactive' ? 'selected' : '' ?>>Inactive</option>
         </select>
+        <select name="verified" class="form-select" style="width: auto;">
+            <option value="">All Verification</option>
+            <option value="1" <?= $verifiedFilter === '1' ? 'selected' : '' ?>>Verified</option>
+            <option value="0" <?= $verifiedFilter === '0' ? 'selected' : '' ?>>Unverified</option>
+        </select>
         <button type="submit" class="btn btn-outline-dark">
             <i class="bi bi-funnel me-1"></i> Filter
         </button>
-        <?php if ($search !== '' || $statusFilter !== ''): ?>
+        <?php if ($search !== '' || $statusFilter !== '' || $verifiedFilter !== ''): ?>
             <a href="<?= BASE_URL ?>/admin/members/" class="btn btn-outline-secondary">
                 <i class="bi bi-x-circle me-1"></i> Clear
             </a>
@@ -80,12 +91,13 @@ require_once ROOT_PATH . '/includes/header.php';
     <a href="<?= BASE_URL ?>/admin/members/add.php" class="btn btn-dark">+ Add Member</a>
 </div>
 
-<?php if ($search !== '' || $statusFilter !== ''): ?>
+<?php if ($search !== '' || $statusFilter !== '' || $verifiedFilter !== ''): ?>
     <div class="alert alert-light border py-2 px-3 mb-3 d-flex align-items-center justify-content-between">
         <div class="small">
             Showing results for <?= $search !== '' ? 'query <strong>"' . htmlspecialchars($search) . '"</strong>' : '' ?>
             <?= ($search !== '' && $statusFilter !== '') ? ' with status ' : '' ?>
             <?= $statusFilter !== '' ? '<strong>' . ucfirst(htmlspecialchars($statusFilter)) . '</strong>' : '' ?>
+            <?= $verifiedFilter !== '' ? ' (<strong>' . ($verifiedFilter === '1' ? 'Verified' : 'Unverified') . '</strong>)' : '' ?>
             (<strong><?= $totalMembers ?></strong> <?= $totalMembers === 1 ? 'member' : 'members' ?> found)
         </div>
         <a href="<?= BASE_URL ?>/admin/members/" class="small text-muted text-decoration-none">Reset all filters</a>
@@ -100,16 +112,21 @@ require_once ROOT_PATH . '/includes/header.php';
     <table class="table mb-0 align-middle">
         <thead>
             <tr>
-                <th>Name</th><th>Email</th><th>Phone</th><th>Status</th><th>Membership</th><th>Joined</th><th>Actions</th>
+                <th>Name</th><th>Email</th><th>Email Verified</th><th>Phone</th><th>Status</th><th>Membership</th><th>Joined</th><th>Actions</th>
             </tr>
         </thead>
         <tbody>
         <?php if (!$members): ?>
-            <tr><td colspan="7" class="text-muted text-center py-4">No members found.</td></tr>
+            <tr><td colspan="8" class="text-muted text-center py-4">No members found.</td></tr>
         <?php else: foreach ($members as $m): ?>
             <tr>
                 <td><?= htmlspecialchars($m['full_name']) ?></td>
                 <td><?= htmlspecialchars($m['email']) ?></td>
+                <td>
+                    <span class="badge bg-<?= !empty($m['email_verified']) ? 'success' : 'warning text-dark' ?>">
+                        <?= !empty($m['email_verified']) ? 'Yes' : 'No' ?>
+                    </span>
+                </td>
                 <td><?= htmlspecialchars($m['phone']) ?></td>
                 <td><span class="badge bg-<?= $m['status'] === 'active' ? 'success' : 'secondary' ?>"><?= ucfirst($m['status']) ?></span></td>
                 <td><span class="badge bg-<?= $m['has_active_membership'] ? 'info' : 'light text-dark' ?>"><?= $m['has_active_membership'] ? 'Active' : 'None' ?></span></td>
@@ -136,7 +153,7 @@ require_once ROOT_PATH . '/includes/header.php';
     <ul class="pagination">
         <?php for ($p = 1; $p <= $totalPages; $p++): ?>
             <li class="page-item <?= $p === $page ? 'active' : '' ?>">
-                <a class="page-link" href="?page=<?= $p ?>&search=<?= urlencode($search) ?>&status=<?= urlencode($statusFilter) ?>"><?= $p ?></a>
+                <a class="page-link" href="?page=<?= $p ?>&search=<?= urlencode($search) ?>&status=<?= urlencode($statusFilter) ?>&verified=<?= urlencode($verifiedFilter) ?>"><?= $p ?></a>
             </li>
         <?php endfor; ?>
     </ul>

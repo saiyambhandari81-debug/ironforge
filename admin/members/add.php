@@ -39,15 +39,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // Email
-    if ($old['email'] === '') {
-        $errors[] = 'Email is required.';
-    } elseif (!filter_var($old['email'], FILTER_VALIDATE_EMAIL)) {
+    if ($old['email'] === '' || !filter_var($old['email'], FILTER_VALIDATE_EMAIL)) {
         $errors[] = 'Please enter a valid email address.';
+    } elseif (strpos($old['email'], ' ') !== false) {
+        $errors[] = 'Email address cannot contain spaces.';
     } else {
-        $check = $pdo->prepare('SELECT COUNT(*) FROM members WHERE email = ?');
-        $check->execute([$old['email']]);
-        if ((int) $check->fetchColumn() > 0) {
-            $errors[] = 'A member with that email already exists.';
+        $emailParts = explode('@', $old['email']);
+        $domain = strtolower($emailParts[1] ?? '');
+        if ($domain === '' || strpos($domain, '.') === false) {
+            $errors[] = 'Please enter a valid email domain.';
+        } else {
+            $check = $pdo->prepare('SELECT COUNT(*) FROM members WHERE email = ?');
+            $check->execute([$old['email']]);
+            if ((int) $check->fetchColumn() > 0) {
+                $errors[] = 'A member with that email already exists.';
+            }
         }
     }
 
@@ -110,11 +116,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!$errors) {
         $hash = password_hash($password, PASSWORD_DEFAULT);
+        $emailVerified = !empty($_POST['email_verified']) ? 1 : 0;
 
         $stmt = $pdo->prepare(
             "INSERT INTO members
-                (full_name, email, phone, address, date_of_birth, gender, join_date, status, password_hash)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)"
+                (full_name, email, phone, address, date_of_birth, gender, join_date, status, password_hash, email_verified)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)"
         );
         $stmt->execute([
             $old['full_name'],
@@ -125,6 +132,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $old['gender'] !== '' ? $old['gender'] : null,
             $old['join_date'],
             $hash,
+            $emailVerified,
         ]);
 
         header('Location: ' . BASE_URL . '/admin/members/?msg=added');
@@ -213,6 +221,11 @@ require_once ROOT_PATH . '/includes/header.php';
                     <label class="form-label">Confirm password *</label>
                     <input type="password" name="confirm_password" class="form-control" required minlength="6">
                 </div>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" name="email_verified" id="email_verified" value="1" <?= !empty($_POST['email_verified']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="email_verified">
+                    Mark email as verified <span class="text-muted small">(Default unchecked; check only if verified in person at desk. Unchecked members must verify via OTP code before login.)</span>
+                </label>
             </div>
 
             <button type="submit" class="btn btn-dark">Save Member</button>

@@ -18,6 +18,7 @@ if (!empty($_SESSION['member_id'])) {
 
 $errors = [];
 $email = '';
+$unverifiedEmail = null;
 $success = (string) ($_SESSION['flash_success'] ?? '');
 unset($_SESSION['flash_success']);
 
@@ -46,6 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Admins: allow if verified or column missing treated as ok (default 1)
             if (isset($admin['email_verified']) && (int) $admin['email_verified'] === 0) {
                 $errors[] = 'Please verify your email before logging in.';
+                $unverifiedEmail = $email;
             } else {
                 session_regenerate_id(true);
                 $_SESSION['admin_id']   = $admin['admin_id'];
@@ -74,6 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $errors[] = 'Your account is not active. Contact the gym.';
                 } elseif (isset($trainer['email_verified']) && (int) $trainer['email_verified'] === 0) {
                     $errors[] = 'Please verify your email before logging in.';
+                    $unverifiedEmail = $email;
                 } else {
                     session_regenerate_id(true);
                     unset($_SESSION['admin_id'], $_SESSION['admin_name'], $_SESSION['admin_role']);
@@ -104,6 +107,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $errors[] = 'Your account is not active. Contact the gym.';
                 } elseif (isset($member['email_verified']) && (int) $member['email_verified'] === 0) {
                     $errors[] = 'Please verify your email before logging in.';
+                    $unverifiedEmail = $email;
                 } else {
                     session_regenerate_id(true);
                     $_SESSION['member_id']   = $member['member_id'];
@@ -180,6 +184,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <span><?= htmlspecialchars($e) ?></span>
                 </div>
             <?php endforeach; ?>
+            <?php if (!empty($unverifiedEmail)): ?>
+                <div class="mt-2 pt-2 border-top border-danger-subtle small">
+                    <a href="<?= BASE_URL ?>/verify-email.php?email=<?= urlencode($unverifiedEmail) ?>" class="btn btn-sm btn-outline-danger">
+                        <i class="bi bi-shield-check me-1"></i> Verify your email now
+                    </a>
+                    <div class="text-muted mt-1 small">
+                        If you do not receive a code, the email address may be wrong or does not exist.
+                    </div>
+                </div>
+            <?php endif; ?>
         </div>
     <?php endif; ?>
 

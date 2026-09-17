@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/config/database.php';
 require_once ROOT_PATH . '/includes/auth.php';
+require_once ROOT_PATH . '/includes/mailer.php';
 
 if (!empty($_SESSION['member_id'])) {
     header('Location: ' . BASE_URL . '/user/index.php');
@@ -9,7 +10,10 @@ if (!empty($_SESSION['member_id'])) {
 
 $errors = [];
 $success = (string) ($_SESSION['flash_success'] ?? '');
-$demoOtp = (string) ($_SESSION['demo_otp'] ?? '');
+$demoOtp = '';
+if (isLocalHost() && !empty($_SESSION['demo_otp'])) {
+    $demoOtp = (string) $_SESSION['demo_otp'];
+}
 unset($_SESSION['flash_success'], $_SESSION['demo_otp']);
 
 $email = trim((string) ($_GET['email'] ?? ''));
@@ -17,7 +21,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim((string) ($_POST['email'] ?? ''));
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+// Resend OTP handler
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['resend_code'])) {
+    verifyCsrf();
+
+    if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $errors[] = 'Please enter a valid email address.';
+    } else {
+        $userFound = false;
+        $mStmt = $pdo->prepare('SELECT member_id, email_verified FROM members WHERE email = ? LIMIT 1');
+        $mStmt->execute([$email]);
+        $m = $mStmt->fetch();
+        if ($m && (int) $m['email_verified'] === 0) {
+            $userFound = true;
+        } else {
+            $tStmt = $pdo->prepare('SELECT trainer_id, email_verified FROM trainers WHERE email = ? LIMIT 1');
+            $tStmt->execute([$email]);
+            $t = $tStmt->fetch();
+            if ($t && (int) $t['email_verified'] === 0) {
+                $userFound = true;
+            }
+        }
+
+        if (!$userFound) {
+            $errors[] = 'Account not found or email is already verified.';
+        } else {
+            $countStmt = $pdo->prepare(
+                "SELECT COUNT(*) FROM email_otps
+                 WHERE email = ? AND purpose = 'register' AND created_at >= DATE_SUB(NOW(), INTERVAL 60 MINUTE)"
+            );
+            $countStmt->execute([$email]);
+            if ((int) $countStmt->fetchColumn() >= 3) {
+                $errors[] = 'Too many requests for this email. Please try again in an hour.';
+            } else {
+                // Invalidate unused previous register OTPs
+                $pdo->prepare(
+                    "UPDATE email_otps
+                     SET used_at = NOW()
+                     WHERE email = ? AND purpose = 'register' AND used_at IS NULL"
+                )->execute([$email]);
+
+                $otp = (string) random_int(100000, 999999);
+                $otpHash = hash('sha256', $otp);
+
+                $pdo->prepare(
+                    "INSERT INTO email_otps (email, purpose, otp_hash, expires_at, attempts)
+                     VALUES (?, 'register', ?, DATE_ADD(NOW(), INTERVAL 15 MINUTE), 0)"
+                )->execute([$email, $otpHash]);
+
+                $body = "Your IronForge email verification code is: {$otp}\n\n"
+                    . "This code expires in 15 minutes.\n"
+                    . "If you did not create an account, you can ignore this email.\n";
+
+                $mail = sendGymEmail($email, 'IronForge email verification code', $body);
+                $_SESSION['flash_success'] = 'A new verification code has been sent to your email.';
+                if (!$mail['ok'] && isLocalHost()) {
+                    $_SESSION['demo_otp'] = $otp;
+                }
+
+                header('Location: ' . BASE_URL . '/verify-email.php?email=' . urlencode($email));
+                exit;
+            }
+        }
+    }
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCsrf();
 
     $code = preg_replace('/\D+/', '', (string) ($_POST['code'] ?? ''));
@@ -30,15 +97,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (!$errors) {
+        $userType = null;
         $memberStmt = $pdo->prepare(
             'SELECT member_id, email_verified FROM members WHERE email = ? LIMIT 1'
         );
         $memberStmt->execute([$email]);
         $member = $memberStmt->fetch();
 
-        if (!$member) {
+        if ($member) {
+            $userType = 'member';
+            $isVerified = (int) $member['email_verified'];
+        } else {
+            $trainerStmt = $pdo->prepare(
+                'SELECT trainer_id, email_verified FROM trainers WHERE email = ? LIMIT 1'
+            );
+            $trainerStmt->execute([$email]);
+            $trainer = $trainerStmt->fetch();
+            if ($trainer) {
+                $userType = 'trainer';
+                $isVerified = (int) $trainer['email_verified'];
+            }
+        }
+
+        if (!$userType) {
             $errors[] = 'No account found for that email.';
-        } elseif ((int) $member['email_verified'] === 1) {
+        } elseif ($isVerified === 1) {
             $_SESSION['flash_success'] = 'Email already verified. You can log in.';
             header('Location: ' . BASE_URL . '/login.php');
             exit;
@@ -58,23 +141,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$otpRow) {
                 $errors[] = 'No active verification code for this email.';
             } elseif ((int) $otpRow['attempts'] >= 5) {
-                $errors[] = 'Too many attempts. This code is locked.';
+                $errors[] = 'Too many attempts. This code is locked. Please request a new code.';
             } elseif (strtotime($otpRow['expires_at']) < time()) {
-                $errors[] = 'That code has expired.';
+                $errors[] = 'That code has expired. Please request a new code.';
             } elseif (!hash_equals($otpRow['otp_hash'], hash('sha256', $code))) {
+                $newAttempts = (int) $otpRow['attempts'] + 1;
                 $pdo->prepare('UPDATE email_otps SET attempts = attempts + 1 WHERE id = ?')
                     ->execute([(int) $otpRow['id']]);
-                $left = 5 - ((int) $otpRow['attempts'] + 1);
-                if ($left <= 0) {
-                    $errors[] = 'Incorrect code. Too many attempts. This code is locked.';
+
+                if ($newAttempts >= 5) {
+                    $pdo->prepare('UPDATE email_otps SET used_at = NOW() WHERE id = ?')
+                        ->execute([(int) $otpRow['id']]);
+                    $errors[] = 'Incorrect code. Maximum attempts reached. This code is now locked.';
                 } else {
+                    $left = 5 - $newAttempts;
                     $errors[] = 'Incorrect code. ' . $left . ' attempt' . ($left === 1 ? '' : 's') . ' left.';
                 }
             } else {
                 $pdo->beginTransaction();
                 try {
-                    $pdo->prepare('UPDATE members SET email_verified = 1 WHERE email = ? AND email_verified = 0')
-                        ->execute([$email]);
+                    if ($userType === 'member') {
+                        $pdo->prepare('UPDATE members SET email_verified = 1 WHERE email = ? AND email_verified = 0')
+                            ->execute([$email]);
+                    } elseif ($userType === 'trainer') {
+                        $pdo->prepare('UPDATE trainers SET email_verified = 1 WHERE email = ? AND email_verified = 0')
+                            ->execute([$email]);
+                    }
+
                     $pdo->prepare('UPDATE email_otps SET used_at = NOW() WHERE id = ?')
                         ->execute([(int) $otpRow['id']]);
                     $pdo->commit();
@@ -87,7 +180,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 if (!$errors) {
-                    $_SESSION['flash_success'] = 'Email verified. You can log in.';
+                    $_SESSION['flash_success'] = 'Email verified successfully. You can now log in.';
                     header('Location: ' . BASE_URL . '/login.php');
                     exit;
                 }
@@ -101,7 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Verify email - IronForge Gym</title>
+    <title>Verify your email - IronForge Gym</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -138,7 +231,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <span class="fw-bold fs-4 text-dark">IronForge</span>
         </a>
         <h1 class="h5 fw-bold mb-1">Verify your email</h1>
-        <p class="text-muted small mb-0">Enter the 6-digit code we sent you</p>
+        <p class="text-muted small mb-0">Enter the 6-digit code we sent you. <strong>Check your Inbox and Spam</strong>.</p>
     </div>
 
     <?php if ($success): ?>
@@ -194,6 +287,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <i class="bi bi-check2-circle me-1"></i> Verify email
         </button>
     </form>
+
+    <div class="d-flex justify-content-between align-items-center mt-3 pt-2 small text-muted">
+        <span>Didn't receive a code?</span>
+        <form method="POST" class="d-inline">
+            <?= csrfField() ?>
+            <input type="hidden" name="email" value="<?= htmlspecialchars($email) ?>">
+            <button type="submit" name="resend_code" value="1" class="btn btn-link p-0 small text-decoration-none fw-semibold text-dark">
+                Resend code
+            </button>
+        </form>
+    </div>
+    <div class="text-center text-muted small mt-2">
+        If you do not receive a code, the email address may be wrong or does not exist.
+    </div>
 
     <div class="text-center mt-4 pt-3 border-top small text-muted">
         <a href="<?= BASE_URL ?>/register.php" class="fw-semibold text-dark text-decoration-none">Back to register</a>
