@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/config/database.php';
 require_once ROOT_PATH . '/includes/auth.php';
+require_once ROOT_PATH . '/includes/mailer.php';
 
 if (!empty($_SESSION['member_id'])) {
     header('Location: ' . BASE_URL . '/user/index.php');
@@ -54,22 +55,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!$errors) {
         $hash = password_hash($password, PASSWORD_DEFAULT);
-        $pdo->prepare("
-            INSERT INTO members (full_name, email, phone, password_hash, join_date, status)
-            VALUES (?, ?, ?, ?, CURDATE(), 'active')
-        ")->execute([
-            $old['full_name'],
-            $old['email'],
-            $old['phone'],
-            $hash,
-        ]);
+        $email = $old['email'];
+        $otp = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        $otpHash = hash('sha256', $otp);
 
-        $memberId = (int) $pdo->lastInsertId();
-        $_SESSION['member_id'] = $memberId;
-        $_SESSION['member_name'] = $old['full_name'];
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare("
+                INSERT INTO members (full_name, email, phone, password_hash, join_date, status, email_verified)
+                VALUES (?, ?, ?, ?, CURDATE(), 'active', 0)
+            ")->execute([
+                $old['full_name'],
+                $email,
+                $old['phone'],
+                $hash,
+            ]);
 
-        header('Location: ' . BASE_URL . '/user/index.php');
-        exit;
+            $pdo->prepare("
+                UPDATE email_otps
+                SET used_at = NOW()
+                WHERE email = ?
+                  AND purpose = 'register'
+                  AND used_at IS NULL
+            ")->execute([$email]);
+
+            $pdo->prepare("
+                INSERT INTO email_otps (email, purpose, otp_hash, expires_at)
+                VALUES (?, 'register', ?, DATE_ADD(NOW(), INTERVAL 15 MINUTE))
+            ")->execute([$email, $otpHash]);
+
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            error_log('Register OTP failed: ' . $e->getMessage());
+            $errors[] = 'Could not create your account. Please try again.';
+        }
+
+        if (!$errors) {
+            $body = "Your IronForge email verification code is: {$otp}\n\n"
+                . "This code expires in 15 minutes.\n"
+                . "If you did not create an account, you can ignore this email.\n";
+
+            $mail = sendGymEmail($email, 'IronForge email verification code', $body);
+
+            $_SESSION['flash_success'] = 'We sent a verification code to your email.';
+            if (!$mail['ok'] && isLocalHost()) {
+                $_SESSION['demo_otp'] = $otp;
+            }
+
+            header('Location: ' . BASE_URL . '/verify-email.php?email=' . urlencode($email));
+            exit;
+        }
     }
 }
 ?>

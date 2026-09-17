@@ -18,6 +18,8 @@ if (!empty($_SESSION['member_id'])) {
 
 $errors = [];
 $email = '';
+$success = (string) ($_SESSION['flash_success'] ?? '');
+unset($_SESSION['flash_success']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCsrf();
@@ -160,6 +162,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <h1 class="h5 fw-bold mb-1">Welcome back</h1>
         <p class="text-muted small mb-0">Sign in to your member, trainer, or admin account</p>
     </div>
+
+    <?php if ($success): ?>
+        <div class="alert alert-success mb-4">
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-check-circle-fill"></i>
+                <span><?= htmlspecialchars($success) ?></span>
+            </div>
+        </div>
+    <?php endif; ?>
 
     <?php if ($errors): ?>
         <div class="alert alert-danger mb-4">
