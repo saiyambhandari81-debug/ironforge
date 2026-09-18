@@ -2,6 +2,7 @@
 require_once __DIR__ . '/config/database.php';
 require_once ROOT_PATH . '/includes/auth.php';
 require_once ROOT_PATH . '/includes/mailer.php';
+require_once ROOT_PATH . '/includes/otp_session.php';
 
 if (!empty($_SESSION['member_id'])) {
     header('Location: ' . BASE_URL . '/user/index.php');
@@ -14,14 +15,14 @@ $demoOtp = '';
 if (isLocalHost() && !empty($_SESSION['demo_otp'])) {
     $demoOtp = (string) $_SESSION['demo_otp'];
 }
-unset($_SESSION['flash_success']);
+unset($_SESSION['flash_success'], $_SESSION['demo_otp']);
 
-$email = trim((string) ($_GET['email'] ?? ''));
+$email = strtolower(trim((string) ($_GET['email'] ?? '')));
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email = trim((string) ($_POST['email'] ?? ''));
+    $email = strtolower(trim((string) ($_POST['email'] ?? '')));
 }
 
-// Resend OTP handler
+// Resend OTP — session only
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['resend_code'])) {
     verifyCsrf();
 
@@ -29,68 +30,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['resend_code'])) {
         $errors[] = 'Please enter a valid email address.';
     } else {
         $userFound = false;
+        $userType = 'member';
+
         $mStmt = $pdo->prepare('SELECT member_id, email_verified FROM members WHERE email = ? LIMIT 1');
         $mStmt->execute([$email]);
         $m = $mStmt->fetch();
         if ($m && (int) $m['email_verified'] === 0) {
             $userFound = true;
+            $userType = 'member';
         } else {
             $tStmt = $pdo->prepare('SELECT trainer_id, email_verified FROM trainers WHERE email = ? LIMIT 1');
             $tStmt->execute([$email]);
             $t = $tStmt->fetch();
             if ($t && (int) $t['email_verified'] === 0) {
                 $userFound = true;
+                $userType = 'trainer';
             } else {
                 $aStmt = $pdo->prepare('SELECT admin_id, email_verified FROM admins WHERE email = ? LIMIT 1');
                 $aStmt->execute([$email]);
                 $a = $aStmt->fetch();
                 if ($a && (int) $a['email_verified'] === 0) {
                     $userFound = true;
+                    $userType = 'admin';
                 }
             }
         }
 
         if (!$userFound) {
             $errors[] = 'Account not found or email is already verified.';
+        } elseif (otpSessionTooManyRequests($email, 'register')) {
+            $errors[] = 'Too many requests for this email. Please try again in an hour.';
         } else {
-            $countStmt = $pdo->prepare(
-                "SELECT COUNT(*) FROM email_otps
-                 WHERE email = ? AND purpose = 'register' AND created_at >= DATE_SUB(NOW(), INTERVAL 60 MINUTE)"
-            );
-            $countStmt->execute([$email]);
-            if ((int) $countStmt->fetchColumn() >= 3) {
-                $errors[] = 'Too many requests for this email. Please try again in an hour.';
+            otpSessionLogRequest($email, 'register');
+            $otp = otpSessionCreate($email, 'register', $userType);
+
+            $body = "Your IronForge email verification code is: {$otp}\n\n"
+                . "This code expires in 1 minutes.\n"
+                . "If you did not create an account, you can ignore this email.\n";
+
+            $mail = sendGymEmail($email, 'IronForge email verification code', $body);
+            $_SESSION['flash_success'] = 'A new verification code has been sent to your email. Check your Inbox and Spam.';
+            if (!$mail['ok'] && isLocalHost()) {
+                $_SESSION['demo_otp'] = $otp;
             } else {
-                // Invalidate unused previous register OTPs
-                $pdo->prepare(
-                    "UPDATE email_otps
-                     SET used_at = NOW()
-                     WHERE email = ? AND purpose = 'register' AND used_at IS NULL"
-                )->execute([$email]);
-
-                $otp = (string) random_int(100000, 999999);
-                $otpHash = hash('sha256', $otp);
-
-                $pdo->prepare(
-                    "INSERT INTO email_otps (email, purpose, otp_hash, expires_at, attempts)
-                     VALUES (?, 'register', ?, DATE_ADD(NOW(), INTERVAL 15 MINUTE), 0)"
-                )->execute([$email, $otpHash]);
-
-                $body = "Your IronForge email verification code is: {$otp}\n\n"
-                    . "This code expires in 15 minutes.\n"
-                    . "If you did not create an account, you can ignore this email.\n";
-
-                $mail = sendGymEmail($email, 'IronForge email verification code', $body);
-                $_SESSION['flash_success'] = 'A new verification code has been sent to your email. Check your Inbox and Spam.';
-                if (!$mail['ok'] && isLocalHost()) {
-                    $_SESSION['demo_otp'] = $otp;
-                } else {
-                    unset($_SESSION['demo_otp']);
-                }
-
-                header('Location: ' . BASE_URL . '/verify-email.php?email=' . urlencode($email));
-                exit;
+                unset($_SESSION['demo_otp']);
             }
+
+            header('Location: ' . BASE_URL . '/verify-email.php?email=' . urlencode($email));
+            exit;
         }
     }
 } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -101,12 +88,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['resend_code'])) {
     if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $errors[] = 'Please enter a valid email.';
     }
-    if (strlen($code) !== 6) {
-        $errors[] = 'Enter the 6-digit verification code.';
-    }
 
     if (!$errors) {
         $userType = null;
+        $isVerified = 0;
+
         $memberStmt = $pdo->prepare(
             'SELECT member_id, email_verified FROM members WHERE email = ? LIMIT 1'
         );
@@ -141,44 +127,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['resend_code'])) {
         if (!$userType) {
             $errors[] = 'No account found for that email.';
         } elseif ($isVerified === 1) {
-            unset($_SESSION['demo_otp']);
+            otpSessionClear();
             $_SESSION['flash_success'] = 'Email already verified. You can log in.';
             header('Location: ' . BASE_URL . '/login.php');
             exit;
         } else {
-            $otpStmt = $pdo->prepare("
-                SELECT id, otp_hash, expires_at, attempts
-                FROM email_otps
-                WHERE email = ?
-                  AND purpose = 'register'
-                  AND used_at IS NULL
-                ORDER BY id DESC
-                LIMIT 1
-            ");
-            $otpStmt->execute([$email]);
-            $otpRow = $otpStmt->fetch();
+            // Verify against SESSION only (not database)
+            $result = otpSessionVerify($email, 'register', $code);
 
-            if (!$otpRow) {
-                $errors[] = 'No active verification code for this email.';
-            } elseif ((int) $otpRow['attempts'] >= 5) {
-                $errors[] = 'Too many attempts. This code is locked. Please request a new code.';
-            } elseif (strtotime($otpRow['expires_at']) < time()) {
-                $errors[] = 'That code has expired. Please request a new code.';
-            } elseif (!hash_equals($otpRow['otp_hash'], hash('sha256', $code))) {
-                $newAttempts = (int) $otpRow['attempts'] + 1;
-                $pdo->prepare('UPDATE email_otps SET attempts = attempts + 1 WHERE id = ?')
-                    ->execute([(int) $otpRow['id']]);
-
-                if ($newAttempts >= 5) {
-                    $pdo->prepare('UPDATE email_otps SET used_at = NOW() WHERE id = ?')
-                        ->execute([(int) $otpRow['id']]);
-                    $errors[] = 'Incorrect code. Maximum attempts reached. This code is now locked.';
-                } else {
-                    $left = 5 - $newAttempts;
-                    $errors[] = 'Incorrect code. ' . $left . ' attempt' . ($left === 1 ? '' : 's') . ' left.';
-                }
+            if (!$result['ok']) {
+                $errors[] = $result['error'];
             } else {
-                $pdo->beginTransaction();
                 try {
                     if ($userType === 'member') {
                         $pdo->prepare('UPDATE members SET email_verified = 1 WHERE email = ? AND email_verified = 0')
@@ -191,22 +150,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['resend_code'])) {
                             ->execute([$email]);
                     }
 
-                    $pdo->prepare('UPDATE email_otps SET used_at = NOW() WHERE id = ?')
-                        ->execute([(int) $otpRow['id']]);
-                    $pdo->commit();
-                } catch (Throwable $e) {
-                    if ($pdo->inTransaction()) {
-                        $pdo->rollBack();
-                    }
-                    error_log('Verify email failed: ' . $e->getMessage());
-                    $errors[] = 'Could not verify your email. Please try again.';
-                }
-
-                if (!$errors) {
-                    unset($_SESSION['demo_otp']);
+                    otpSessionClear();
                     $_SESSION['flash_success'] = 'Email verified successfully. You can now log in.';
                     header('Location: ' . BASE_URL . '/login.php');
                     exit;
+                } catch (Throwable $e) {
+                    error_log('Verify email failed: ' . $e->getMessage());
+                    $errors[] = 'Could not verify your email. Please try again.';
                 }
             }
         }

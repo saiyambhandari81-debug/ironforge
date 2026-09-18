@@ -2,6 +2,7 @@
 require_once __DIR__ . '/config/database.php';
 require_once ROOT_PATH . '/includes/auth.php';
 require_once ROOT_PATH . '/includes/mailer.php';
+require_once ROOT_PATH . '/includes/otp_session.php';
 
 if (!empty($_SESSION['admin_id'])) {
     header('Location: ' . BASE_URL . '/admin/dashboard.php');
@@ -30,12 +31,12 @@ function forgotPasswordClientIp(): string
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verifyCsrf();
-    $email = trim((string) ($_POST['email'] ?? ''));
+    $email = strtolower(trim((string) ($_POST['email'] ?? '')));
 
     if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $errors[] = 'Please enter a valid email address.';
     } else {
-        // IP rate limit: max 10 per hour
+        // IP rate limit: max 10 per hour (table optional)
         $ip = forgotPasswordClientIp();
         try {
             $ipCount = $pdo->prepare(
@@ -52,29 +53,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
             $logAttempt->execute([$ip, $email]);
         } catch (PDOException $e) {
-            // If table does not exist, continue without failing
+            // Table missing — continue
         }
 
-        // Email rate limit: max 3 reset OTPs per email per hour
-        if (empty($errors)) {
-            $emailCount = $pdo->prepare(
-                "SELECT COUNT(*) FROM email_otps
-                 WHERE email = ? AND purpose = 'reset' AND created_at >= DATE_SUB(NOW(), INTERVAL 60 MINUTE)"
-            );
-            $emailCount->execute([$email]);
-            if ((int) $emailCount->fetchColumn() >= 3) {
-                $errors[] = 'Too many password reset requests for this email. Please try again in an hour.';
-            }
+        // Session rate limit: max 3 reset OTPs per email per hour
+        if (empty($errors) && otpSessionTooManyRequests($email, 'reset')) {
+            $errors[] = 'Too many password reset requests for this email. Please try again in an hour.';
         }
 
-        // User lookup order: admin (active) -> trainer (not inactive) -> member (active)
+        // Lookup: admin → trainer → member
         if (empty($errors)) {
             $userType = null;
 
-            // 1. Admin
             $stmt = $pdo->prepare(
-                'SELECT admin_id, full_name, password_hash, status, email_verified
-                 FROM admins WHERE email = ? LIMIT 1'
+                'SELECT admin_id, status, email_verified FROM admins WHERE email = ? LIMIT 1'
             );
             $stmt->execute([$email]);
             $admin = $stmt->fetch();
@@ -88,10 +80,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $userType = 'admin';
                 }
             } else {
-                // 2. Trainer
                 $stmt = $pdo->prepare(
-                    'SELECT trainer_id, full_name, password_hash, status, email_verified
-                     FROM trainers WHERE email = ? LIMIT 1'
+                    'SELECT trainer_id, status, email_verified FROM trainers WHERE email = ? LIMIT 1'
                 );
                 $stmt->execute([$email]);
                 $trainer = $stmt->fetch();
@@ -105,10 +95,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $userType = 'trainer';
                     }
                 } else {
-                    // 3. Member
                     $stmt = $pdo->prepare(
-                        'SELECT member_id, full_name, password_hash, status, email_verified
-                         FROM members WHERE email = ? LIMIT 1'
+                        'SELECT member_id, status, email_verified FROM members WHERE email = ? LIMIT 1'
                     );
                     $stmt->execute([$email]);
                     $member = $stmt->fetch();
@@ -128,29 +116,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             if (empty($errors) && $userType !== null) {
-                // Invalidate any existing unused purpose=reset OTPs for this email
-                $pdo->prepare(
-                    "UPDATE email_otps
-                     SET used_at = NOW()
-                     WHERE email = ? AND purpose = 'reset' AND used_at IS NULL"
-                )->execute([$email]);
+                // OTP only in session — not in database
+                otpSessionLogRequest($email, 'reset');
+                $otp = otpSessionCreate($email, 'reset', $userType);
 
-                // Generate 6-digit OTP code
-                $otp = (string) random_int(100000, 999999);
-                $otpHash = hash('sha256', $otp);
-
-                $insertOtp = $pdo->prepare(
-                    "INSERT INTO email_otps (email, purpose, otp_hash, expires_at, attempts)
-                     VALUES (?, 'reset', ?, DATE_ADD(NOW(), INTERVAL 15 MINUTE), 0)"
-                );
-                $insertOtp->execute([$email, $otpHash]);
-
-                // Send email via Gmail SMTP
                 $mail = sendPasswordResetOtp($email, $otp);
 
                 $_SESSION['flash_success'] = 'A 6-digit verification code has been sent to your email.';
                 if (!$mail['ok'] && isLocalHost()) {
                     $_SESSION['demo_otp'] = $otp;
+                } else {
+                    unset($_SESSION['demo_otp']);
                 }
 
                 header('Location: ' . BASE_URL . '/verify-reset-otp.php?email=' . urlencode($email));
@@ -226,7 +202,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                        placeholder="name@example.com"
                        value="<?= htmlspecialchars($email) ?>" required autofocus>
             </div>
-            <div class="form-text">We'll send a 6-digit code valid for 15 minutes.</div>
+            <div class="form-text">We'll send a 6-digit code valid for 1 minute.</div>
         </div>
         <button type="submit" class="btn btn-dark btn-lg w-100 fw-semibold">
             <i class="bi bi-send me-1"></i> Send reset code

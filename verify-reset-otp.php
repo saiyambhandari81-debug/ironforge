@@ -2,6 +2,7 @@
 require_once __DIR__ . '/config/database.php';
 require_once ROOT_PATH . '/includes/auth.php';
 require_once ROOT_PATH . '/includes/mailer.php';
+require_once ROOT_PATH . '/includes/otp_session.php';
 
 if (!empty($_SESSION['admin_id'])) {
     header('Location: ' . BASE_URL . '/admin/dashboard.php');
@@ -24,9 +25,9 @@ if (isLocalHost() && !empty($_SESSION['demo_otp'])) {
 }
 unset($_SESSION['flash_success'], $_SESSION['demo_otp']);
 
-$email = trim((string) ($_GET['email'] ?? ''));
+$email = strtolower(trim((string) ($_GET['email'] ?? '')));
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email = trim((string) ($_POST['email'] ?? ''));
+    $email = strtolower(trim((string) ($_POST['email'] ?? '')));
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -37,78 +38,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $errors[] = 'Please enter a valid email address.';
     }
-    if (strlen($code) !== 6) {
-        $errors[] = 'Please enter the 6-digit verification code.';
-    }
 
     if (empty($errors)) {
-        // Verify account exists & is active
-        $userType = null;
-        $stmt = $pdo->prepare('SELECT admin_id, status FROM admins WHERE email = ? LIMIT 1');
-        $stmt->execute([$email]);
-        $admin = $stmt->fetch();
+        // Check code against SESSION only (not database)
+        $result = otpSessionVerify($email, 'reset', $code);
 
-        if ($admin && ($admin['status'] ?? 'active') === 'active') {
-            $userType = 'admin';
+        if (!$result['ok']) {
+            $errors[] = $result['error'];
         } else {
-            $stmt = $pdo->prepare('SELECT trainer_id, status FROM trainers WHERE email = ? LIMIT 1');
-            $stmt->execute([$email]);
-            $trainer = $stmt->fetch();
+            $userType = (string) ($result['data']['user_type'] ?? '');
 
-            if ($trainer && ($trainer['status'] ?? 'active') !== 'inactive') {
-                $userType = 'trainer';
-            } else {
-                $stmt = $pdo->prepare('SELECT member_id, status FROM members WHERE email = ? LIMIT 1');
+            // Fallback if user_type missing in session
+            if (!in_array($userType, ['admin', 'trainer', 'member'], true)) {
+                $stmt = $pdo->prepare('SELECT admin_id, status FROM admins WHERE email = ? LIMIT 1');
                 $stmt->execute([$email]);
-                $member = $stmt->fetch();
-
-                if ($member && ($member['status'] ?? 'active') === 'active') {
-                    $userType = 'member';
+                $admin = $stmt->fetch();
+                if ($admin && ($admin['status'] ?? 'active') === 'active') {
+                    $userType = 'admin';
+                } else {
+                    $stmt = $pdo->prepare('SELECT trainer_id, status FROM trainers WHERE email = ? LIMIT 1');
+                    $stmt->execute([$email]);
+                    $trainer = $stmt->fetch();
+                    if ($trainer && ($trainer['status'] ?? 'active') !== 'inactive') {
+                        $userType = 'trainer';
+                    } else {
+                        $stmt = $pdo->prepare('SELECT member_id, status FROM members WHERE email = ? LIMIT 1');
+                        $stmt->execute([$email]);
+                        $member = $stmt->fetch();
+                        if ($member && ($member['status'] ?? 'active') === 'active') {
+                            $userType = 'member';
+                        }
+                    }
                 }
             }
-        }
 
-        if (!$userType) {
-            $errors[] = 'No active account found with that email.';
-        } else {
-            // Find active reset OTP
-            $otpStmt = $pdo->prepare("
-                SELECT id, otp_hash, expires_at, attempts
-                FROM email_otps
-                WHERE email = ?
-                  AND purpose = 'reset'
-                  AND used_at IS NULL
-                ORDER BY id DESC
-                LIMIT 1
-            ");
-            $otpStmt->execute([$email]);
-            $otpRow = $otpStmt->fetch();
-
-            if (!$otpRow) {
-                $errors[] = 'No active verification code for this email. Please request a new code.';
-            } elseif ((int) $otpRow['attempts'] >= 5) {
-                $errors[] = 'Too many attempts. This code is locked. Please request a new code.';
-            } elseif (strtotime($otpRow['expires_at']) < time()) {
-                $errors[] = 'That verification code has expired. Please request a new code.';
-            } elseif (!hash_equals($otpRow['otp_hash'], hash('sha256', $code))) {
-                $newAttempts = (int) $otpRow['attempts'] + 1;
-                $pdo->prepare('UPDATE email_otps SET attempts = attempts + 1 WHERE id = ?')
-                    ->execute([(int) $otpRow['id']]);
-
-                if ($newAttempts >= 5) {
-                    $pdo->prepare('UPDATE email_otps SET used_at = NOW() WHERE id = ?')
-                        ->execute([(int) $otpRow['id']]);
-                    $errors[] = 'Incorrect code. Maximum attempts reached. This code is now locked.';
-                } else {
-                    $left = 5 - $newAttempts;
-                    $errors[] = 'Incorrect code. ' . $left . ' attempt' . ($left === 1 ? '' : 's') . ' left.';
-                }
+            if (!in_array($userType, ['admin', 'trainer', 'member'], true)) {
+                $errors[] = 'No active account found with that email.';
             } else {
-                // Success: store authorization in session
+                // Clear OTP; allow password change only via session
+                otpSessionClear();
                 $_SESSION['password_reset_ok'] = [
                     'email'     => $email,
                     'user_type' => $userType,
-                    'otp_id'    => (int) $otpRow['id'],
+                    'expires'   => time() + 60, // 1 minute to set new password
                 ];
                 header('Location: ' . BASE_URL . '/reset-password.php');
                 exit;

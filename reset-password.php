@@ -21,34 +21,21 @@ if (empty($_SESSION['password_reset_ok'])) {
 }
 
 $resetAuth = $_SESSION['password_reset_ok'];
-$email = (string) ($resetAuth['email'] ?? $resetAuth[0] ?? '');
-$userType = (string) ($resetAuth['user_type'] ?? $resetAuth[1] ?? '');
-$otpId = (int) ($resetAuth['otp_id'] ?? $resetAuth[2] ?? 0);
+$email = (string) ($resetAuth['email'] ?? '');
+$userType = (string) ($resetAuth['user_type'] ?? '');
+$sessionExpires = (int) ($resetAuth['expires'] ?? 0);
 
 $errors = [];
 $isValid = false;
 
-if ($email === '' || !in_array($userType, ['admin', 'trainer', 'member'], true) || $otpId <= 0) {
+if ($email === '' || !in_array($userType, ['admin', 'trainer', 'member'], true)) {
     unset($_SESSION['password_reset_ok']);
     $errors[] = 'Invalid password reset session. Please start again.';
+} elseif ($sessionExpires > 0 && $sessionExpires < time()) {
+    unset($_SESSION['password_reset_ok']);
+    $errors[] = 'Your password reset session has expired. Please request a new code.';
 } else {
-    // Ensure OTP has not been marked used or expired
-    $checkStmt = $pdo->prepare("
-        SELECT id FROM email_otps
-        WHERE id = ?
-          AND email = ?
-          AND purpose = 'reset'
-          AND used_at IS NULL
-          AND expires_at > NOW()
-        LIMIT 1
-    ");
-    $checkStmt->execute([$otpId, $email]);
-    if (!$checkStmt->fetch()) {
-        unset($_SESSION['password_reset_ok']);
-        $errors[] = 'Your password reset session has expired. Please request a new code.';
-    } else {
-        $isValid = true;
-    }
+    $isValid = true;
 }
 
 if ($isValid && $_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -87,26 +74,9 @@ if ($isValid && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([$hash, $email]);
             }
 
-            // Mark OTP used and invalidate other reset OTPs for this email
-            $pdo->prepare("
-                UPDATE email_otps
-                SET used_at = NOW()
-                WHERE email = ?
-                  AND purpose = 'reset'
-                  AND used_at IS NULL
-            ")->execute([$email]);
-
-            // Invalidate legacy password_resets if table exists
-            try {
-                $pdo->prepare(
-                    'UPDATE password_resets SET used_at = NOW() WHERE email = ? AND used_at IS NULL'
-                )->execute([$email]);
-            } catch (PDOException $e) {
-                // Ignore if table missing
-            }
-
             $pdo->commit();
 
+            // OTP was only in session — clear reset authorization
             unset($_SESSION['password_reset_ok']);
             $_SESSION['flash_success'] = 'Password updated successfully. You can log in now.';
             header('Location: ' . BASE_URL . '/login.php');

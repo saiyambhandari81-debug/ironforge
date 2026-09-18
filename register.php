@@ -2,6 +2,7 @@
 require_once __DIR__ . '/config/database.php';
 require_once ROOT_PATH . '/includes/auth.php';
 require_once ROOT_PATH . '/includes/mailer.php';
+require_once ROOT_PATH . '/includes/otp_session.php';
 
 if (!empty($_SESSION['member_id'])) {
     header('Location: ' . BASE_URL . '/user/index.php');
@@ -41,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] = 'Please enter a valid email domain.';
         } else {
             $check = $pdo->prepare('SELECT member_id FROM members WHERE email = ? LIMIT 1');
-            $check->execute([$old['email']]);
+            $check->execute([strtolower($old['email'])]);
             if ($check->fetch()) {
                 $errors[] = 'This email is already registered.';
             }
@@ -62,13 +63,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (!$errors) {
-        $hash = password_hash($password, PASSWORD_DEFAULT);
-        $email = $old['email'];
-        $otp = (string) random_int(100000, 999999);
-        $otpHash = hash('sha256', $otp);
+        $email = strtolower($old['email']);
+        if (otpSessionTooManyRequests($email, 'register')) {
+            $errors[] = 'Too many verification requests for this email. Please try again in an hour.';
+        }
+    }
 
-        $pdo->beginTransaction();
+    if (!$errors) {
+        $hash = password_hash($password, PASSWORD_DEFAULT);
+        $email = strtolower($old['email']);
+
         try {
+            // Save member only — no OTP in database
             $pdo->prepare("
                 INSERT INTO members (full_name, email, phone, password_hash, join_date, status, email_verified)
                 VALUES (?, ?, ?, ?, CURDATE(), 'active', 0)
@@ -78,32 +84,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $old['phone'],
                 $hash,
             ]);
-
-            $pdo->prepare("
-                UPDATE email_otps
-                SET used_at = NOW()
-                WHERE email = ?
-                  AND purpose = 'register'
-                  AND used_at IS NULL
-            ")->execute([$email]);
-
-            $pdo->prepare("
-                INSERT INTO email_otps (email, purpose, otp_hash, expires_at, attempts)
-                VALUES (?, 'register', ?, DATE_ADD(NOW(), INTERVAL 15 MINUTE), 0)
-            ")->execute([$email, $otpHash]);
-
-            $pdo->commit();
         } catch (Throwable $e) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-            error_log('Register OTP failed: ' . $e->getMessage());
+            error_log('Register failed: ' . $e->getMessage());
             $errors[] = 'Could not create your account. Please try again.';
         }
 
         if (!$errors) {
+            // OTP only in PHP session (hashed) — supervisor requirement
+            otpSessionLogRequest($email, 'register');
+            $otp = otpSessionCreate($email, 'register', 'member');
+
             $body = "Your IronForge email verification code is: {$otp}\n\n"
-                . "This code expires in 15 minutes.\n"
+                . "This code expires in 1 minute.\n"
                 . "If you did not create an account, you can ignore this email.\n";
 
             $mail = sendGymEmail($email, 'IronForge email verification code', $body);
